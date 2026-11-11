@@ -31,6 +31,13 @@ def get_admin_quick_reply() -> QuickReply:
         QuickReplyItem(action=MessageAction(label="🧪 連線測試", text="test"))
     ])
 
+def create_text_msg(text: str, quick_reply=None) -> TextMessage:
+    """建立 TextMessage 並安全設定快捷選單 (避開 Pydantic v1 繼承模型在 IDE 的建構參數檢查誤判)"""
+    msg = TextMessage(text=text)
+    if quick_reply is not None:
+        msg.quick_reply = quick_reply
+    return msg
+
 app = FastAPI(title="Magic X-Ray LIFF System", version="1.0.0")
 
 # 確保靜態資料夾存在並掛載
@@ -155,7 +162,7 @@ def handle_text_message(event):
             "👇 點擊下方快捷按鈕可立即發送指令！"
         )
         with ApiClient(configuration) as api_client:
-            msg_obj = TextMessage(text=menu_text, quick_reply=get_admin_quick_reply())
+            msg_obj = create_text_msg(text=menu_text, quick_reply=get_admin_quick_reply())
             MessagingApi(api_client).reply_message(
                 ReplyMessageRequest(reply_token=event.reply_token, messages=[msg_obj])
             )
@@ -219,7 +226,7 @@ def handle_text_message(event):
         }
 
         with ApiClient(configuration) as api_client:
-            text_link = TextMessage(text=f"🔗 LIFF 連結備用：\n{LIFF_URL}", quick_reply=get_admin_quick_reply())
+            text_link = create_text_msg(text=f"🔗 LIFF 連結備用：\n{LIFF_URL}", quick_reply=get_admin_quick_reply())
             MessagingApi(api_client).reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
@@ -253,7 +260,7 @@ def handle_text_message(event):
                 f"🔗 LIFF 網址：\n{LIFF_URL}"
             )
         with ApiClient(configuration) as api_client:
-            msg_obj = TextMessage(text=msg, quick_reply=get_admin_quick_reply())
+            msg_obj = create_text_msg(text=msg, quick_reply=get_admin_quick_reply())
             MessagingApi(api_client).reply_message(
                 ReplyMessageRequest(reply_token=event.reply_token, messages=[msg_obj])
             )
@@ -288,7 +295,7 @@ def handle_text_message(event):
             }
         }
         with ApiClient(configuration) as api_client:
-            msg_obj = TextMessage(text=f"🔗 LIFF 直連網址：\n{LIFF_URL}", quick_reply=get_admin_quick_reply() if user_id == ADMIN_USER_ID else None)
+            msg_obj = create_text_msg(text=f"🔗 LIFF 直連網址：\n{LIFF_URL}", quick_reply=get_admin_quick_reply() if user_id == ADMIN_USER_ID else None)
             MessagingApi(api_client).reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
@@ -307,7 +314,7 @@ def handle_text_message(event):
         info = calculate_magic_round(0)
         msg = f"🔄 輪次已歸零。\n首發模式：{info['mode_name']}\n迫牌目標：【{info['card_name']}】({info['card_filename']})"
         with ApiClient(configuration) as api_client:
-            msg_obj = TextMessage(text=msg, quick_reply=get_admin_quick_reply())
+            msg_obj = create_text_msg(text=msg, quick_reply=get_admin_quick_reply())
             MessagingApi(api_client).reply_message(
                 ReplyMessageRequest(reply_token=event.reply_token, messages=[msg_obj])
             )

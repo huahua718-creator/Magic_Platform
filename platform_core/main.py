@@ -60,6 +60,14 @@ configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 
+def create_text_msg(text: str, quick_reply=None) -> TextMessage:
+    """建立 TextMessage 並賦予快捷選單（避開 Pydantic v1 繼承類別在 IDE 的 __init__ 靜態檢查誤判）"""
+    msg = TextMessage(text=text)
+    if quick_reply is not None:
+        msg.quick_reply = quick_reply
+    return msg
+
+
 @app.get("/")
 async def root():
     return {
@@ -156,7 +164,7 @@ async def callback(request: Request):
 def handle_follow(event):
     """新好友加入自動發送平台歡迎詞與魔術選單"""
     user_id = event.source.user_id
-    welcome_msg = TextMessage(
+    welcome_msg = create_text_msg(
         text=(
             "🎩 歡迎來到【奇幻數位魔術訂閱平台】！\n"
             "━━━━━━━━━━━━━━━\n"
@@ -196,14 +204,14 @@ def handle_text_message(event):
         )
         with ApiClient(configuration) as api_client:
             MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply, quick_reply=quick_reply)])
+                ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text=reply, quick_reply=quick_reply)])
             )
         return
 
     # 2. 魔術文字/滑動選單 (所有魔術總入口)
     if cmd in ["魔術選單", "選單", "!menu", "menu", "tricks", "!help", "指令"]:
         carousel_dict = build_magic_carousel(user_id)
-        helper_txt = TextMessage(
+        helper_txt = create_text_msg(
             text="🎩 請左右滑動上方卡片挑選要演出的魔術，或點擊下方快捷按鈕：",
             quick_reply=quick_reply
         )
@@ -252,7 +260,7 @@ def handle_text_message(event):
             )
         with ApiClient(configuration) as api_client:
             MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=sub_msg, quick_reply=quick_reply)])
+                ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text=sub_msg, quick_reply=quick_reply)])
             )
         return
 
@@ -271,14 +279,14 @@ def handle_text_message(event):
                         MessagingApi(api_client).push_message(
                             PushMessageRequest(
                                 to=target_uid,
-                                messages=[TextMessage(text=f"🎉 恭喜！您的【奇幻魔術 SaaS 訂閱會員】已開通（有效期 {days} 天，至 {rec['expire_at'][:10]}）！\n現在請輸入「魔術選單」立即開始演出！", quick_reply=build_quick_reply(target_uid))]
+                                messages=[create_text_msg(text=f"🎉 恭喜！您的【奇幻魔術 SaaS 訂閱會員】已開通（有效期 {days} 天，至 {rec['expire_at'][:10]}）！\n現在請輸入「魔術選單」立即開始演出！", quick_reply=build_quick_reply(target_uid))]
                             )
                         )
                 except Exception as pe:
                     reply_txt += f"\n⚠️ (私訊通知對方失敗: {pe})"
                 with ApiClient(configuration) as api_client:
                     MessagingApi(api_client).reply_message(
-                        ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_txt, quick_reply=quick_reply)])
+                        ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text=reply_txt, quick_reply=quick_reply)])
                     )
                 return
 
@@ -289,7 +297,7 @@ def handle_text_message(event):
                 SubscriptionManager.revoke_subscription(target_uid)
                 with ApiClient(configuration) as api_client:
                     MessagingApi(api_client).reply_message(
-                        ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=f"🚫 已停用用戶 {target_uid} 的訂閱權限。", quick_reply=quick_reply)])
+                        ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text=f"🚫 已停用用戶 {target_uid} 的訂閱權限。", quick_reply=quick_reply)])
                     )
                 return
 
@@ -301,7 +309,7 @@ def handle_text_message(event):
                 lines.append(f"• {uid_short} | {s.get('status')} | 至 {str(s.get('expire_at'))[:10]}")
             with ApiClient(configuration) as api_client:
                 MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text="\n".join(lines), quick_reply=quick_reply)])
+                    ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text="\n".join(lines), quick_reply=quick_reply)])
                 )
             return
 
@@ -312,7 +320,7 @@ def handle_text_message(event):
         if not trick:
             with ApiClient(configuration) as api_client:
                 MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text="❌ 找不到指定的魔術項目。", quick_reply=quick_reply)])
+                    ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text="❌ 找不到指定的魔術項目。", quick_reply=quick_reply)])
                 )
             return
 
@@ -321,7 +329,7 @@ def handle_text_message(event):
         if not access["allowed"]:
             with ApiClient(configuration) as api_client:
                 MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=access["message"], quick_reply=quick_reply)])
+                    ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text=access["message"], quick_reply=quick_reply)])
                 )
             return
 
@@ -374,7 +382,7 @@ def handle_text_message(event):
                         reply_token=event.reply_token,
                         messages=[
                             FlexMessage(alt_text="X光透視魔術已啟動", contents=FlexContainer.from_dict(flex_xray)),
-                            TextMessage(text=f"🔗 觀眾共用連結（請給觀眾或掃描）：\n{launch_url}", quick_reply=quick_reply)
+                            create_text_msg(text=f"🔗 觀眾共用連結（請給觀眾或掃描）：\n{launch_url}", quick_reply=quick_reply)
                         ]
                     )
                 )
@@ -411,7 +419,7 @@ def handle_text_message(event):
                         reply_token=event.reply_token,
                         messages=[
                             FlexMessage(alt_text="數位透視眼 AR 已授權", contents=FlexContainer.from_dict(flex_keycard)),
-                            TextMessage(text=f"🔗 數位透視眼直連網址：\n{launch_url}", quick_reply=quick_reply)
+                            create_text_msg(text=f"🔗 數位透視眼直連網址：\n{launch_url}", quick_reply=quick_reply)
                         ]
                     )
                 )
@@ -448,7 +456,7 @@ def handle_text_message(event):
                         reply_token=event.reply_token,
                         messages=[
                             FlexMessage(alt_text="記憶流痕 AR 已授權", contents=FlexContainer.from_dict(flex_frozen)),
-                            TextMessage(text=f"🔗 記憶流痕主控台網址：\n{launch_url}", quick_reply=quick_reply)
+                            create_text_msg(text=f"🔗 記憶流痕主控台網址：\n{launch_url}", quick_reply=quick_reply)
                         ]
                     )
                 )
@@ -485,7 +493,7 @@ def handle_text_message(event):
                         reply_token=event.reply_token,
                         messages=[
                             FlexMessage(alt_text="多人畫牌已授權", contents=FlexContainer.from_dict(flex_drawcards)),
-                            TextMessage(text=f"🔗 多人畫牌直連網址：\n{launch_url}", quick_reply=quick_reply)
+                            create_text_msg(text=f"🔗 多人畫牌直連網址：\n{launch_url}", quick_reply=quick_reply)
                         ]
                     )
                 )
@@ -498,7 +506,7 @@ def handle_text_message(event):
         msg = f"🔄 您的 X光透視輪次已歸零。\n首發模式：{info['mode_name']}\n迫牌目標：【{info['card_name']}】({info['card_filename']})"
         with ApiClient(configuration) as api_client:
             MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=msg, quick_reply=quick_reply)])
+                ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text=msg, quick_reply=quick_reply)])
             )
         return
 
@@ -508,7 +516,7 @@ def handle_text_message(event):
         if not SubscriptionManager.is_session_unlocked(user_id, "xray_card") and not SubscriptionManager.is_session_unlocked(ADMIN_USER_ID, "xray_card"):
             with ApiClient(configuration) as api_client:
                 MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text="大師目前的感知通道尚未開啟，請稍候或輸入「魔術選單」。", quick_reply=quick_reply)])
+                    ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text="大師目前的感知通道尚未開啟，請稍候或輸入「魔術選單」。", quick_reply=quick_reply)])
                 )
             return
 
@@ -608,7 +616,7 @@ async def liff_upload_photo(
                 f"👉 請迫牌：【{next_round['card_name']}】({next_round['card_filename']})"
             )
             MessagingApi(api_client).push_message(
-                PushMessageRequest(to=magician_id, messages=[TextMessage(text=msg, quick_reply=build_quick_reply(magician_id))])
+                PushMessageRequest(to=magician_id, messages=[create_text_msg(text=msg, quick_reply=build_quick_reply(magician_id))])
             )
     except Exception as e:
         print(f"Notify magician {magician_id} error: {e}")
