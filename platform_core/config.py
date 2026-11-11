@@ -56,5 +56,15 @@ TRICK_REGISTRY = {
         "tier": "pro",
         "free_trial_daily": 0,
         "color": "#a855f7"
+    },
+    "drawcards": {
+        "id": "drawcards",
+        "name": "多人畫牌 (Draw Cards)",
+        "short_name": "多人畫牌",
+        "subtitle": "極簡讀心術 + 隱形選牌矩陣 + 多人手繪 3D 翻牌",
+        "entry_path": "/tricks/drawcards/index.html",
+        "tier": "pro",
+        "free_trial_daily": 0,
+        "color": "#f59e0b"
     }
 }

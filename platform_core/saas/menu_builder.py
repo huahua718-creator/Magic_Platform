@@ -10,6 +10,7 @@ def build_quick_reply(user_id: str) -> QuickReply:
         QuickReplyItem(action=MessageAction(label="⚡ X光透視", text="!play xray_card")),
         QuickReplyItem(action=MessageAction(label="👁️ 數位透視眼AR", text="!play keycard_ar")),
         QuickReplyItem(action=MessageAction(label="🕯️ 記憶流痕AR", text="!play frozen_proof_ar")),
+        QuickReplyItem(action=MessageAction(label="✏️ 多人畫牌", text="!play drawcards")),
         QuickReplyItem(action=MessageAction(label="💎 訂閱狀態", text="!sub")),
     ]
 

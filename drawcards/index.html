@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Cardtoon - 專業極簡讀心術</title>
+    <style>
+        /* 💡 全域防干擾與極簡黑美學 */
+        * { box-sizing: border-box; }
+        body { 
+            margin: 0; background-color: #111; 
+            display: flex; flex-direction: column; align-items: center; 
+            min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #fff; 
+            touch-action: none; overflow: hidden;
+            user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+        }
+
+        /* 🎬 起始畫面樣式（修正行動裝置拉扯與斷字問題） */
+        #start-screen {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #111; z-index: 800; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; cursor: pointer;
+            touch-action: none; text-align: center; padding: 20px;
+        }
+        #start-screen h1 {
+            font-size: 36px; font-weight: 400; letter-spacing: 2px; margin: 0 0 16px 0; color: #fff;
+            width: 100%; word-break: break-word; line-height: 1.3;
+        }
+        #start-screen p {
+            font-size: 16px; color: #666; margin: 0; letter-spacing: 1px;
+            animation: blink 2s infinite ease-in-out;
+        }
+        @keyframes blink { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+        /* 🧙‍♂️ 魔術師秘密觸發區（完全透明隱形，移除所有視覺外框） */
+        #secret-btn { 
+            position: absolute; bottom: 0; right: 0; width: 85px; height: 85px; 
+            z-index: 900; background: transparent; border: none; outline: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* 🃏 4 x 13 撲克牌矩陣彈出選單（固定於螢幕下方，方便單手操作） */
+        #matrix-overlay {
+            position: fixed; display: none; pointer-events: none;
+            left: 50%; bottom: 30px; transform: translateX(-50%); z-index: 1000;
+            background: rgba(20, 20, 20, 0.96); padding: 14px; border-radius: 16px;
+            border: 1px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+            width: calc(100vw - 32px); max-width: 420px; touch-action: none;
+        }
+        #matrix-preview {
+            text-align: center; font-size: 18px; font-weight: bold; margin-bottom: 12px;
+            color: #f3c623; pointer-events: none; height: 24px; line-height: 24px;
+        }
+        #matrix-grid {
+            display: grid; grid-template-columns: repeat(13, 1fr); gap: 3px; pointer-events: none;
+        }
+        /* 行動端流暢縮放尺寸 */
+        .card-option {
+            pointer-events: auto; width: 100%; aspect-ratio: 2 / 3; background: #fff;
+            border-radius: 4px; display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: bold; transition: transform 0.1s ease, box-shadow 0.1s ease;
+            user-select: none; -webkit-user-select: none;
+        }
+        /* 滑動選取時的高亮放大特效 */
+        .card-option.highlight {
+            transform: scale(1.4); box-shadow: 0 0 15px #f3c623; z-index: 1100;
+            border: 1px solid #f3c623;
+        }
+
+        /* ✏️ 畫布主效果層級 (初始隱藏) */
+        #status-text { 
+            position: absolute; top: 40px; text-align: center; display: none;
+            color: #f3c623; font-weight: bold; font-size: 20px;
+            pointer-events: none; z-index: 100; text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+        }
+        #paintCanvas { 
+            position: absolute; top: 0; left: 0; z-index: 50; cursor: crosshair; 
+            touch-action: none; display: none;
+        }
+        
+        /* 3D 卡牌容器 */
+        .card { 
+            position: absolute; z-index: 10; 
+            transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+            transform-style: preserve-3d; cursor: pointer; -webkit-tap-highlight-color: transparent;
+        }
+        .face { 
+            position: absolute; width: 100%; height: 100%; 
+            backface-visibility: hidden; border-radius: 10px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5); overflow: hidden; background: #fff;
+        }
+        .front { transform: rotateY(180deg); border: 1px solid #ccc; }
+        .card-img { width: 100%; height: 100%; object-fit: fill; display: block; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen">
+        <h1>Draw Your Card</h1>
+        <p>Tap to Start</p>
+        <div id="secret-btn"></div>
+    </div>
+
+    <div id="matrix-overlay">
+        <div id="matrix-preview">請滑動選擇牌面</div>
+        <div id="matrix-grid"></div>
+    </div>
+
+    <h3 id="status-text">請畫出撲克牌框</h3>
+    <canvas id="paintCanvas"></canvas>
+    <div id="cards-container"></div>
+
+    <script>
+        // 全域攔截原生右鍵與長按選單
+        window.addEventListener('contextmenu', e => e.preventDefault());
+
+        // 訂閱授權防盜攔截器
+        let isAuthorized = true;
+        window.addEventListener('DOMContentLoaded', async () => {
+            const params = new URLSearchParams(window.location.search);
+            const mid = params.get('mid') || '';
+            const token = params.get('token') || '';
+            try {
+                const res = await fetch(`/api/auth/verify?trick=drawcards&mid=${encodeURIComponent(mid)}&token=${encodeURIComponent(token)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.authorized) {
+                        isAuthorized = false;
+                        document.body.innerHTML = `
+                            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;width:100vw;padding:24px;text-align:center;background:#111;color:#fff;">
+                                <div style="font-size:48px;margin-bottom:16px;">🔒</div>
+                                <h2 style="color:#f59e0b;margin:0 0 12px 0;">未經授權的存取</h2>
+                                <p style="color:#888;font-size:14px;max-width:300px;line-height:1.6;">${data.message || '「多人畫牌」為訂閱會員專屬魔術道具，請從認證官方帳號選單開啟！'}</p>
+                            </div>
+                        `;
+                    }
+                }
+            } catch (e) {
+                console.log("Standalone preview");
+            }
+        });
+
+        const canvas = document.getElementById('paintCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('cards-container');
+        const statusText = document.getElementById('status-text');
+        const startScreen = document.getElementById('start-screen');
+        const secretBtn = document.getElementById('secret-btn');
+        const matrixOverlay = document.getElementById('matrix-overlay');
+        const matrixPreview = document.getElementById('matrix-preview');
+        const matrixGrid = document.getElementById('matrix-grid');
+        
+        let isDrawing = false, strokes = [], drawnRects = [];
+        let cardSequence = []; 
+
+        // ==========================================
+        // 📅 預設日期自動演算邏輯
+        // ==========================================
+        const today = new Date();
+        const currentMonth = today.getMonth() + 1;
+        const currentDate = today.getDate();
+        const remainder = currentDate % 4;
+
+        let defaultStartSuit = (remainder === 1) ? 'club' : (remainder === 2) ? 'diamond' : (remainder === 3) ? 'heart' : 'spade';
+        let startSuit = defaultStartSuit;
+        let startValue = currentMonth;
+        const cycleOrder = ['heart', 'spade', 'diamond', 'club'];
+
+        // ==========================================
+        // 🛠️ 動態建置 4 x 13 撲克牌選擇器
+        // ==========================================
+        const selectorSuits = [
+            { id: 'spade', sym: '♠', color: '#111111' },
+            { id: 'heart', sym: '♥', color: '#e63946' },
+            { id: 'diamond', sym: '♦', color: '#e63946' },
+            { id: 'club', sym: '♣', color: '#111111' }
+        ];
+
+        selectorSuits.forEach(s => {
+            for (let v = 1; v <= 13; v++) {
+                const opt = document.createElement('div');
+                opt.className = 'card-option';
+                opt.style.color = s.color;
+                opt.setAttribute('data-suit', s.id);
+                opt.setAttribute('data-val', v);
+                opt.setAttribute('data-symbol', s.sym);
+                
+                let disp = v;
+                if (v === 1) disp = 'A';
+                else if (v === 11) disp = 'J';
+                else if (v === 12) disp = 'Q';
+                else if (v === 13) disp = 'K';
+                
+                opt.setAttribute('data-display', disp);
+                opt.innerText = disp;
+                matrixGrid.appendChild(opt);
+            }
+        });
+
+        // ==========================================
+        // 👆 隱形選牌器智慧觸控邏輯 (Pointer Events)
+        // ==========================================
+        let selectorTimer;
+        let isSelecting = false;
+        let currentHighlighted = null;
+        let startX, startY;
+        let preventStart = false; 
+
+        secretBtn.addEventListener('pointerdown', (e) => {
+            e.stopPropagation(); 
+            startX = e.clientX;
+            startY = e.clientY;
+
+            // 長按 200 毫秒在下方展開選單
+            selectorTimer = setTimeout(() => {
+                isSelecting = true;
+                matrixOverlay.style.display = 'block';
+                matrixPreview.innerText = "請滑動選擇牌面";
+                matrixPreview.style.color = "#f3c623";
+            }, 200);
+        });
+
+        window.addEventListener('pointermove', (e) => {
+            if (!isSelecting) {
+                if (selectorTimer) {
+                    const dist = Math.sqrt(Math.pow(e.clientX - startX, 2) + Math.pow(e.clientY - startY, 2));
+                    if (dist > 15) clearTimeout(selectorTimer); // 防手震
+                }
+                return;
+            }
+
+            // 即時偵測手指滑動到的卡片元素
+            const target = document.elementFromPoint(e.clientX, e.clientY);
+
+            if (target && target.classList.contains('card-option')) {
+                if (currentHighlighted !== target) {
+                    if (currentHighlighted) currentHighlighted.classList.remove('highlight');
+                    currentHighlighted = target;
+                    currentHighlighted.classList.add('highlight');
+
+                    const suitSym = currentHighlighted.getAttribute('data-symbol');
+                    const valStr = currentHighlighted.getAttribute('data-display');
+                    matrixPreview.innerText = `預覽：${suitSym} ${valStr}`;
+                    matrixPreview.style.color = currentHighlighted.style.color;
+                }
+            } else {
+                if (currentHighlighted) {
+                    currentHighlighted.classList.remove('highlight');
+                    currentHighlighted = null;
+                    matrixPreview.innerText = "請滑動選擇牌面";
+                    matrixPreview.style.color = "#f3c623";
+                }
+            }
+        });
+
+        window.addEventListener('pointerup', (e) => {
+            clearTimeout(selectorTimer);
+
+            if (isSelecting) {
+                const target = document.elementFromPoint(e.clientX, e.clientY);
+                if (target && target.classList.contains('card-option')) {
+                    startSuit = target.getAttribute('data-suit');
+                    startValue = parseInt(target.getAttribute('data-val'));
+                }
+
+                setTimeout(() => {
+                    if (currentHighlighted) currentHighlighted.classList.remove('highlight');
+                    currentHighlighted = null;
+                    matrixOverlay.style.display = 'none';
+                    isSelecting = false;
+                }, 100);
+
+                preventStart = true;
+                setTimeout(() => preventStart = false, 300);
+            }
+        });
+
+        // ==========================================
+        // 🎬 切換至主要畫布（物理銷毀秘密鍵）
+        // ==========================================
+        startScreen.addEventListener('pointerup', (e) => {
+            if (!isAuthorized || preventStart || isSelecting || e.target === secretBtn) return;
+
+            startScreen.style.display = 'none';
+            secretBtn.remove(); // 徹底銷毀按鈕
+
+            canvas.style.display = 'block';
+            statusText.style.display = 'block';
+            resize();
+        });
+
+        // ==========================================
+        // ✏️ 畫布演算與 3D 翻牌
+        // ==========================================
+        function resize() { 
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight; 
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        }
+        window.onresize = resize;
+
+        function getRelativePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        }
+
+        function getNextCard(index) {
+            if (index === 0) return { suit: startSuit, val: startValue };
+            const prevCard = cardSequence[index - 1];
+            let prevSuitIdx = cycleOrder.indexOf(prevCard.suit);
+            let nextSuit = cycleOrder[(prevSuitIdx + 1) % 4];
+            let nextVal = prevCard.val + 5;
+            if (nextVal > 13) nextVal -= 13;
+            return { suit: nextSuit, val: nextVal };
+        }
+
+        function getImagePath(suit, val) {
+            let v = (val === 1) ? '1' : (val === 11) ? 'jack' : (val === 12) ? 'queen' : (val === 13) ? 'king' : val;
+            return `./cards/${suit}_${v}.png`;
+        }
+
+        let pressTimer;
+        canvas.addEventListener('pointerdown', (e) => {
+            isDrawing = true; strokes = []; 
+            const pos = getRelativePos(e);
+            ctx.beginPath(); ctx.moveTo(pos.x, pos.y);
+            pressTimer = setTimeout(() => { if(drawnRects.length > 0) finalizeMagic(); }, 800);
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            if(!isDrawing) return;
+            const pos = getRelativePos(e);
+            ctx.lineTo(pos.x, pos.y); ctx.stroke();
+            strokes.push(pos);
+            clearTimeout(pressTimer);
+        });
+
+        canvas.addEventListener('pointerup', () => {
+            isDrawing = false; clearTimeout(pressTimer);
+            if(strokes.length > 15) drawnRects.push([...strokes]);
+        });
+
+        function finalizeMagic() {
+            canvas.style.display = 'none'; statusText.innerHTML = "";
+            drawnRects.forEach((rect, i) => {
+                let xs = rect.map(p => p.x), ys = rect.map(p => p.y);
+                let minX = Math.min(...xs)-10, maxX = Math.max(...xs)+10, minY = Math.min(...ys)-10, maxY = Math.max(...ys)+10;
+                let card = getNextCard(i); cardSequence.push(card);
+                
+                let div = document.createElement('div');
+                div.className = 'card';
+                div.style.width = (maxX-minX)+'px'; div.style.height = (maxY-minY)+'px';
+                div.style.left = minX+'px'; div.style.top = minY+'px';
+                div.innerHTML = `<div class="face back"><img class="card-img" src="./cards/bicycle_blue.png"></div>
+                                 <div class="face front"><img class="card-img" src="${getImagePath(card.suit, card.val)}"></div>`;
+                div.onclick = function(e) { e.stopPropagation(); this.style.transform = "rotateY(180deg)"; };
+                container.appendChild(div);
+            });
+        }
+    </script>
+</body>
+</html>

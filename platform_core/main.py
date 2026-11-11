@@ -20,6 +20,7 @@ ROOT_DIR = os.path.dirname(CURRENT_DIR)
 XRAY_DIR = os.path.join(ROOT_DIR, "magic_xray_liff")
 KEYCARD_DIR = os.path.join(ROOT_DIR, "keycard")
 FROZEN_DIR = os.path.join(ROOT_DIR, "theFrozenProofMindAR")
+DRAWCARDS_DIR = os.path.join(ROOT_DIR, "drawcards")
 
 sys.path.insert(0, CURRENT_DIR)
 sys.path.insert(1, ROOT_DIR)
@@ -52,6 +53,8 @@ if os.path.exists(KEYCARD_DIR):
     app.mount("/tricks/keycard", StaticFiles(directory=KEYCARD_DIR, html=True), name="trick_keycard")
 if os.path.exists(FROZEN_DIR):
     app.mount("/tricks/frozen", StaticFiles(directory=FROZEN_DIR, html=True), name="trick_frozen")
+if os.path.exists(DRAWCARDS_DIR):
+    app.mount("/tricks/drawcards", StaticFiles(directory=DRAWCARDS_DIR, html=True), name="trick_drawcards")
 
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -108,6 +111,8 @@ async def liff_router(trick: str = "xray_card", mid: str = "", uid: str = "", to
         target = f"/tricks/keycard/index.html?mid={mid}&token={token}"
     elif trick == "frozen_proof_ar":
         target = f"/tricks/frozen/index.html?mode=master&mid={mid}&token={token}"
+    elif trick == "drawcards":
+        target = f"/tricks/drawcards/index.html?mid={mid}&token={token}"
     else:
         target = f"/tricks/xray/magic.html?mid={mid}&uid={uid}&token={token}"
     return RedirectResponse(url=target)
@@ -444,6 +449,43 @@ def handle_text_message(event):
                         messages=[
                             FlexMessage(alt_text="記憶流痕 AR 已授權", contents=FlexContainer.from_dict(flex_frozen)),
                             TextMessage(text=f"🔗 記憶流痕主控台網址：\n{launch_url}", quick_reply=quick_reply)
+                        ]
+                    )
+                )
+            return
+
+        elif trick_id == "drawcards":
+            launch_url = f"{BASE_URL}/tricks/drawcards/index.html?mid={user_id}&token={token}"
+            flex_drawcards = {
+                "type": "bubble",
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {"type": "text", "text": "✏️ 多人畫牌已授權！", "weight": "bold", "size": "lg", "color": "#f59e0b"},
+                        {"type": "text", "text": "長按右下角隱形感應區可秘密設定首張牌，否則自動以今日日期演算法啟動。讓多位觀眾畫框後長按即可變身 3D 單車撲克！", "size": "xs", "color": "#666666", "margin": "md", "wrap": True}
+                    ]
+                },
+                "footer": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "button",
+                            "style": "primary",
+                            "color": "#f59e0b",
+                            "action": {"type": "uri", "label": "✏️ 啟動多人畫牌道具", "uri": launch_url}
+                        }
+                    ]
+                }
+            }
+            with ApiClient(configuration) as api_client:
+                MessagingApi(api_client).reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[
+                            FlexMessage(alt_text="多人畫牌已授權", contents=FlexContainer.from_dict(flex_drawcards)),
+                            TextMessage(text=f"🔗 多人畫牌直連網址：\n{launch_url}", quick_reply=quick_reply)
                         ]
                     )
                 )

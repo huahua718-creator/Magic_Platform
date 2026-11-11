@@ -19,41 +19,44 @@ def test_platform():
     admin_access_xray = SubscriptionManager.can_access_trick(ADMIN_USER_ID, "xray_card")
     admin_access_keycard = SubscriptionManager.can_access_trick(ADMIN_USER_ID, "keycard_ar")
     admin_access_frozen = SubscriptionManager.can_access_trick(ADMIN_USER_ID, "frozen_proof_ar")
-    print(f"3. 超級管理員權限 -> XRay: {admin_access_xray['allowed']} | Keycard AR: {admin_access_keycard['allowed']} | Frozen Proof: {admin_access_frozen['allowed']}")
+    admin_access_draw = SubscriptionManager.can_access_trick(ADMIN_USER_ID, "drawcards")
+    print(f"3. 超級管理員權限 -> XRay: {admin_access_xray['allowed']} | Keycard AR: {admin_access_keycard['allowed']} | Frozen Proof: {admin_access_frozen['allowed']} | Drawcards: {admin_access_draw['allowed']}")
 
     # 測試一般未訂閱用戶權限
     test_guest = "U_GUEST_TEST_999"
     guest_xray = SubscriptionManager.can_access_trick(test_guest, "xray_card")
     guest_keycard = SubscriptionManager.can_access_trick(test_guest, "keycard_ar")
     guest_frozen = SubscriptionManager.can_access_trick(test_guest, "frozen_proof_ar")
-    print(f"4. 未訂閱遊客權限 -> XRay (試玩): {guest_xray['allowed']} (剩 {guest_xray.get('remaining')} 次) | Keycard AR: {guest_keycard['allowed']} | Frozen Proof: {guest_frozen['allowed']}")
+    guest_draw = SubscriptionManager.can_access_trick(test_guest, "drawcards")
+    print(f"4. 未訂閱遊客權限 -> XRay (試玩): {guest_xray['allowed']} (剩 {guest_xray.get('remaining')} 次) | Keycard AR: {guest_keycard['allowed']} | Frozen: {guest_frozen['allowed']} | Drawcards: {guest_draw['allowed']}")
 
     # 測試管理員授與訂閱資格 30 天
     print("5. 模擬超級管理員執行 !grant 授與測試會員 30 天訂閱...")
     sub_record = SubscriptionManager.grant_subscription(test_guest, days=30)
-    sub_frozen = SubscriptionManager.can_access_trick(test_guest, "frozen_proof_ar")
-    print(f"   訂閱開通結果 -> 到期日: {sub_record['expire_at']} | Frozen Proof 解鎖: {sub_frozen['allowed']}")
+    sub_draw = SubscriptionManager.can_access_trick(test_guest, "drawcards")
+    print(f"   訂閱開通結果 -> 到期日: {sub_record['expire_at']} | Drawcards 解鎖: {sub_draw['allowed']}")
 
     # 測試 Token 生成與驗證
-    token = SubscriptionManager.generate_launch_token(test_guest, "frozen_proof_ar")
-    valid = SubscriptionManager.verify_launch_token(test_guest, "frozen_proof_ar", token)
-    tampered = SubscriptionManager.verify_launch_token(test_guest, "frozen_proof_ar", "fake_token_123")
+    token = SubscriptionManager.generate_launch_token(test_guest, "drawcards")
+    valid = SubscriptionManager.verify_launch_token(test_guest, "drawcards", token)
+    tampered = SubscriptionManager.verify_launch_token(test_guest, "drawcards", "fake_token_123")
     print(f"6. 防偽 Token 驗證 -> 正確 Token: {valid} | 偽造 Token: {tampered}")
 
     # 測試選單生成
     carousel = build_magic_carousel(test_guest)
-    print(f"7. 魔術櫃滑動卡片生成 -> 卡片數量: {len(carousel['contents'])} 張 (3個魔術 + 1張訂閱狀態)")
+    print(f"7. 魔術櫃滑動卡片生成 -> 卡片數量: {len(carousel['contents'])} 張 (4個魔術 + 1張訂閱狀態)")
 
     # 測試完畢撤銷測試用戶以保持資料庫乾淨
     SubscriptionManager.revoke_subscription(test_guest)
-    revoked_frozen = SubscriptionManager.can_access_trick(test_guest, "frozen_proof_ar")
-    print(f"8. 停用測試訂閱驗證 -> Frozen Proof 授權已回收: {not revoked_frozen['allowed']}")
+    revoked_draw = SubscriptionManager.can_access_trick(test_guest, "drawcards")
+    print(f"8. 停用測試訂閱驗證 -> Drawcards 授權已回收: {not revoked_draw['allowed']}")
 
     # 驗證靜態路徑掛載點
-    print("9. 檢查三個魔術前端檔案路徑:")
+    print("9. 檢查四個魔術前端檔案路徑:")
     print(f"   XRay HTML 存在: {os.path.exists(os.path.join(platform_app.XRAY_STATIC_DIR, 'magic.html'))}")
     print(f"   Keycard AR HTML 存在: {os.path.exists(os.path.join(platform_app.KEYCARD_DIR, 'index.html'))}")
     print(f"   Frozen Proof HTML 存在: {os.path.exists(os.path.join(platform_app.FROZEN_DIR, 'index.html'))}")
+    print(f"   Drawcards HTML 存在: {os.path.exists(os.path.join(platform_app.DRAWCARDS_DIR, 'index.html'))}")
 
     print("=" * 60)
     print("✅ 全平台架構與訂閱邏輯驗證 100% 通過！")
