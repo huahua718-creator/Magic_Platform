@@ -1,0 +1,21 @@
+# Python 虛擬環境與快取
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# 敏感金鑰環境變數
+.env
+
+# 暫存照片與合成圖 (避免佔用 Git 空間與洩露照片)
+static/temp/*
+!static/temp/.gitkeep
+
+# 編輯器與系統設定
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+

@@ -1,0 +1,13 @@
+venv/
+env/
+__pycache__/
+*.py[cod]
+.env
+firebase-credentials*.json
+magic_xray_liff/static/temp/*
+!magic_xray_liff/static/temp/.gitkeep
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+

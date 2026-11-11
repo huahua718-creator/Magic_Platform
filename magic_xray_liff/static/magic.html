@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+  <title>Optical Magic Sensor</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    body {
+      background: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #app-viewport {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at center, #071921 0%, #000000 75%);
+      touch-action: none;
+    }
+
+    /* 頂部 HUD 狀態列 (全英文) */
+    #hud-status {
+      position: absolute;
+      top: 32px;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      z-index: 25;
+      pointer-events: none;
+      padding: 0 16px;
+    }
+    #hud-status .main-text {
+      font-size: 15px;
+      font-weight: 700;
+      color: #00ffcc;
+      letter-spacing: 1.8px;
+      text-shadow: 0 0 12px rgba(0, 255, 204, 0.8), 0 2px 4px #000;
+    }
+    #hud-status .sub-text {
+      font-size: 11px;
+      color: #88ffff;
+      letter-spacing: 1.2px;
+      margin-top: 5px;
+      opacity: 0.85;
+      text-shadow: 0 0 8px rgba(0, 255, 255, 0.6);
+    }
+
+    #file-input { display: none; }
+
+    /* 雙層影像畫布 (bg-canvas 底層顯影，main-canvas 上層牌背與動態操作) */
+    #bg-canvas, #main-canvas {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      max-width: 100%;
+      max-height: 100%;
+      display: none;
+    }
+    #bg-canvas { z-index: 8; }
+    #main-canvas { z-index: 10; }
+
+    /* 螢幕正中央核心圓形控制台 (貫穿 啟動拍照 -> 轉動讀取 -> 長按觸發 三階段) */
+    #center-hub {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+    }
+
+    .hub-circle {
+      position: relative;
+      width: 152px;
+      height: 152px;
+      border-radius: 50%;
+      background: rgba(8, 22, 30, 0.85);
+      border: 2px solid rgba(0, 255, 204, 0.45);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #00ffff;
+      cursor: pointer;
+      box-shadow: 0 0 28px rgba(0, 255, 204, 0.3), inset 0 0 20px rgba(0, 255, 204, 0.2);
+      transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    /* 階段 1: 拍照待機微呼吸光暈 */
+    .hub-circle.mode-camera {
+      animation: pulseGlow 2.4s infinite ease-in-out;
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 204, 0.25), inset 0 0 15px rgba(0, 255, 204, 0.15); }
+      50% { box-shadow: 0 0 42px rgba(0, 255, 204, 0.65), inset 0 0 26px rgba(0, 255, 204, 0.35); }
+    }
+
+    /* 階段 2: 讀取分析圓環旋轉 */
+    .hub-circle.mode-loading {
+      cursor: wait;
+      background: rgba(5, 15, 22, 0.78);
+      border-color: rgba(0, 255, 204, 0.2);
+      box-shadow: 0 0 25px rgba(0, 255, 255, 0.25);
+    }
+    .spinner-ring {
+      position: absolute;
+      top: -8px;
+      left: -8px;
+      width: 168px;
+      height: 168px;
+      border-radius: 50%;
+      border: 4px solid rgba(0, 255, 255, 0.1);
+      border-top: 4px solid #00ffff;
+      border-right: 4px solid #00ffcc;
+      box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+      animation: spinRing 0.9s linear infinite;
+      display: none;
+      pointer-events: none;
+    }
+    @keyframes spinRing {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* 階段 3: 長按 2 秒發光進度環 */
+    .hub-circle.pressing {
+      transform: scale(0.95);
+      border-color: #00ffff;
+      box-shadow: 0 0 55px rgba(0, 255, 255, 0.95), inset 0 0 32px rgba(0, 255, 255, 0.65);
+    }
+    .btn-svg-ring {
+      position: absolute;
+      top: -8px;
+      left: -8px;
+      width: 168px;
+      height: 168px;
+      pointer-events: none;
+      transform: rotate(-90deg);
+      display: none;
+    }
+    .btn-svg-ring circle {
+      fill: none;
+      stroke-width: 4;
+      stroke-linecap: round;
+    }
+    .ring-bg {
+      stroke: rgba(0, 255, 204, 0.18);
+    }
+    .ring-progress {
+      stroke: #00ffff;
+      stroke-dasharray: 490; /* 2 * PI * 78 */
+      stroke-dashoffset: 490;
+      transition: stroke-dashoffset 0.05s linear;
+      filter: drop-shadow(0 0 8px #00ffff);
+    }
+
+    .hub-title {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      line-height: 1.4;
+      padding: 0 14px;
+      text-shadow: 0 0 8px #00ffff;
+    }
+    .hub-subtitle {
+      font-size: 9px;
+      color: #88ffff;
+      margin-top: 6px;
+      letter-spacing: 0.8px;
+      opacity: 0.85;
+    }
+    .camera-icon {
+      width: 28px;
+      height: 28px;
+      margin-bottom: 6px;
+      stroke: #00ffff;
+      fill: none;
+      stroke-width: 2;
+      filter: drop-shadow(0 0 6px #00ffff);
+    }
+
+    .btn-disappear {
+      animation: explodeFade 0.45s forwards ease-out;
+    }
+    @keyframes explodeFade {
+      0% { transform: scale(1); opacity: 1; filter: brightness(2); }
+      50% { transform: scale(1.35); opacity: 0.7; }
+      100% { transform: scale(0.1); opacity: 0; }
+    }
+
+    /* X光雷射掃描光束 */
+    #laser-beam {
+      display: none;
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: #ffffff;
+      box-shadow: 0 0 12px 4px #00ffff, 0 0 25px 8px #00aaff, 0 0 45px 15px rgba(0, 170, 255, 0.5);
+      pointer-events: none;
+      z-index: 15;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="app-viewport">
+    <!-- 頂部英文 HUD 狀態 -->
+    <div id="hud-status">
+      <div class="main-text" id="hud-title">OPTICAL MAGIC SENSOR</div>
+      <div class="sub-text" id="hud-sub">TAP CENTER BUTTON TO SCAN CARD</div>
+    </div>
+
+    <!-- 隱藏檔案輸入元件 -->
+    <input type="file" id="file-input" accept="image/*" capture="environment">
+
+    <!-- 定格背景雙層畫布 -->
+    <canvas id="bg-canvas"></canvas>
+    <canvas id="main-canvas"></canvas>
+    <div id="laser-beam"></div>
+
+    <!-- 中央核心控制器 (拍照按鈕 -> 讀取旋轉圓環 -> 長按 2 秒啟動按鈕) -->
+    <div id="center-hub">
+      <label class="hub-circle mode-camera" id="hub-circle" for="file-input">
+        <!-- 旋轉讀取環 (階段 2 顯示) -->
+        <div class="spinner-ring" id="spinner-ring"></div>
+
+        <!-- 長按 2 秒進度環 (階段 3 顯示) -->
+        <svg class="btn-svg-ring" id="progress-svg">
+          <circle class="ring-bg" cx="84" cy="84" r="78"></circle>
+          <circle class="ring-progress" id="ring-progress" cx="84" cy="84" r="78"></circle>
+        </svg>
+
+        <!-- 相機圖示 (階段 1 顯示) -->
+        <svg class="camera-icon" id="camera-icon" viewBox="0 0 24 24">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+          <circle cx="12" cy="13" r="4"></circle>
+        </svg>
+
+        <span class="hub-title" id="hub-title">TAP TO<br>ACTIVATE</span>
+        <span class="hub-subtitle" id="hub-sub">OPEN CAMERA</span>
+      </label>
+    </div>
+  </div>
+
+  <script>
+    // 取得網址列參數 uid, mid (魔術師ID), token (訂閱授權碼)
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('uid') || '';
+    const magicianId = urlParams.get('mid') || '';
+    const authToken = urlParams.get('token') || '';
+
+    const fileInput = document.getElementById('file-input');
+    const hudTitle = document.getElementById('hud-title');
+    const hudSub = document.getElementById('hud-sub');
+    const bgCanvas = document.getElementById('bg-canvas');
+    const bgCtx = bgCanvas.getContext('2d');
+    const mainCanvas = document.getElementById('main-canvas');
+    const ctx = mainCanvas.getContext('2d');
+    const laserBeam = document.getElementById('laser-beam');
+
+    const centerHub = document.getElementById('center-hub');
+    const hubCircle = document.getElementById('hub-circle');
+    const spinnerRing = document.getElementById('spinner-ring');
+    const progressSvg = document.getElementById('progress-svg');
+    const ringProgress = document.getElementById('ring-progress');
+    const cameraIcon = document.getElementById('camera-icon');
+    const hubTitle = document.getElementById('hub-title');
+    const hubSub = document.getElementById('hub-sub');
+
+    let currentMode = "XRAY";
+    let cardCorners = [];
+    let origImage = null;
+    let revealedImage = null;
+    let isActionStage = false; // 防止進入後段後誤觸發 file-input
+
+    // 前端等比例縮放壓縮防爆記憶體
+    function compressImage(file, maxDimension = 1200, quality = 0.85) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            let width = img.width;
+            let height = img.height;
+            if (width > maxDimension || height > maxDimension) {
+              if (width > height) {
+                height = Math.round((height * maxDimension) / width);
+                width = maxDimension;
+              } else {
+                width = Math.round((width * maxDimension) / height);
+                height = maxDimension;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const cCtx = canvas.getContext('2d');
+            cCtx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob((blob) => {
+              resolve(blob || file);
+            }, 'image/jpeg', quality);
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      // 移除 label 關聯，防止後續點擊再彈出相機
+      isActionStage = true;
+      hubCircle.removeAttribute('for');
+
+      // 1. 立即定格在剛拍好的照片上
+      const localPreviewUrl = URL.createObjectURL(file);
+      const previewImg = new Image();
+      previewImg.onload = () => {
+        mainCanvas.style.display = 'block';
+        mainCanvas.width = previewImg.naturalWidth;
+        mainCanvas.height = previewImg.naturalHeight;
+        ctx.drawImage(previewImg, 0, 0, mainCanvas.width, mainCanvas.height);
+      };
+      previewImg.src = localPreviewUrl;
+
+      // 2. 畫面中央同位置立刻轉為「圓環轉動讀取」狀態
+      cameraIcon.style.display = 'none';
+      hubCircle.classList.remove('mode-camera');
+      hubCircle.classList.add('mode-loading');
+      spinnerRing.style.display = 'block';
+      hubTitle.innerHTML = "SCANNING";
+      hubSub.innerText = "PROCESSING...";
+      hudTitle.innerText = "INITIALIZING MAGIC...";
+      hudSub.innerText = "READING QUANTUM SIGNATURE";
+
+      try {
+        const compressedBlob = await compressImage(file, 1200, 0.85);
+        const formData = new FormData();
+        formData.append("photo", compressedBlob, "card.jpg");
+        if (userId) formData.append("uid", userId);
+        if (magicianId) formData.append("mid", magicianId);
+        if (authToken) formData.append("token", authToken);
+
+        const response = await fetch("/api/liff/upload", {
+          method: "POST",
+          body: formData
+        });
+        const res = await response.json();
+
+        if (res.status !== "SUCCESS") {
+          alert(res.detail || "Recognition failed or session locked.");
+          resetToCamera();
+          return;
+        }
+
+        currentMode = res.mode;
+        cardCorners = res.corners;
+
+        // 載入後端處理完的圖檔
+        const imgTop = new Image();
+        const imgBg = new Image();
+        let loaded = 0;
+        const done = () => {
+          if (++loaded === 2) {
+            origImage = imgTop;
+            revealedImage = imgBg;
+            onMagicReady();
+          }
+        };
+
+        imgTop.crossOrigin = "anonymous";
+        imgBg.crossOrigin = "anonymous";
+        imgTop.src = res.original_url;
+        imgBg.src = res.revealed_url;
+        imgTop.onload = done;
+        imgBg.onload = done;
+
+      } catch (err) {
+        alert("Connection timeout. Please retry.");
+        resetToCamera();
+      }
+    });
+
+    function resetToCamera() {
+      isActionStage = false;
+      hubCircle.setAttribute('for', 'file-input');
+      fileInput.value = '';
+      mainCanvas.style.display = 'none';
+      bgCanvas.style.display = 'none';
+      spinnerRing.style.display = 'none';
+      progressSvg.style.display = 'none';
+      cameraIcon.style.display = 'block';
+      hubCircle.classList.remove('mode-loading', 'pressing', 'btn-disappear');
+      hubCircle.classList.add('mode-camera');
+      hubTitle.innerHTML = "TAP TO<br>ACTIVATE";
+      hubSub.innerText = "OPEN CAMERA";
+      hudTitle.innerText = "OPTICAL MAGIC SENSOR";
+      hudSub.innerText = "TAP CENTER BUTTON TO SCAN CARD";
+    }
+
+    // 3. 讀取完成：在正中央原位接續切換為「長按 2 秒啟動按鈕」
+    function onMagicReady() {
+      // 確保雙層畫布對齊最新尺寸
+      const w = origImage.naturalWidth;
+      const h = origImage.naturalHeight;
+      bgCanvas.width = w;
+      bgCanvas.height = h;
+      mainCanvas.width = w;
+      mainCanvas.height = h;
+      ctx.drawImage(origImage, 0, 0, w, h);
+
+      // 停止轉動圓環，切換成發光進度按鈕
+      spinnerRing.style.display = 'none';
+      hubCircle.classList.remove('mode-loading');
+      progressSvg.style.display = 'block';
+
+      if (currentMode === "XRAY") {
+        hubTitle.innerHTML = "HOLD 2S<br>ACTIVATE<br>X-RAY";
+        hubSub.innerText = "READY TO SCAN";
+        hudTitle.innerText = "SENSOR READY";
+        hudSub.innerText = "HOLD CENTER BUTTON FOR 2 SECONDS";
+      } else {
+        hubTitle.innerHTML = "HOLD 2S<br>ACTIVATE<br>SENSOR";
+        hubSub.innerText = "READY TO REVEAL";
+        hudTitle.innerText = "SENSOR READY";
+        hudSub.innerText = "HOLD CENTER BUTTON FOR 2 SECONDS";
+      }
+
+      bindCenterHoldButton();
+    }
+
+    /* ---------------- 中央按鈕長按 2 秒邏輯 ---------------- */
+    function bindCenterHoldButton() {
+      let pressStartTime = 0;
+      let animFrameId = null;
+      let isPressing = false;
+      const totalCircumference = 490; // 2 * PI * 78
+
+      function updateProgress() {
+        if (!isPressing) return;
+        const elapsed = Date.now() - pressStartTime;
+        const progress = Math.min(1.0, elapsed / 2000.0);
+
+        ringProgress.style.strokeDashoffset = totalCircumference * (1 - progress);
+
+        if (progress >= 1.0) {
+          isPressing = false;
+          if (navigator.vibrate) navigator.vibrate([60, 40, 100]);
+          hubCircle.classList.add("btn-disappear");
+          setTimeout(() => {
+            centerHub.style.display = "none";
+            if (currentMode === "XRAY") {
+              startXrayScan();
+            } else {
+              startScratchMode();
+            }
+          }, 400);
+          return;
+        }
+
+        animFrameId = requestAnimationFrame(updateProgress);
+      }
+
+      function onStart(e) {
+        if (!isActionStage) return;
+        if (e.cancelable) e.preventDefault();
+        isPressing = true;
+        pressStartTime = Date.now();
+        hubCircle.classList.add("pressing");
+        if (navigator.vibrate) navigator.vibrate(30);
+        animFrameId = requestAnimationFrame(updateProgress);
+      }
+
+      function onEnd() {
+        if (!isPressing) return;
+        isPressing = false;
+        hubCircle.classList.remove("pressing");
+        if (animFrameId) cancelAnimationFrame(animFrameId);
+        ringProgress.style.strokeDashoffset = totalCircumference;
+      }
+
+      hubCircle.addEventListener("touchstart", onStart, { passive: false });
+      window.addEventListener("touchend", onEnd);
+      hubCircle.addEventListener("mousedown", onStart);
+      window.addEventListener("mouseup", onEnd);
+    }
+
+    /* ---------------- X光逐行正片疊底顯影 ---------------- */
+    function startXrayScan() {
+      hudTitle.innerText = "X-RAY SCAN IN PROGRESS...";
+      hudSub.innerText = "PENETRATING OUTER LAYER";
+      laserBeam.style.display = "block";
+
+      const w = mainCanvas.width;
+      const h = mainCanvas.height;
+
+      const yCoords = cardCorners.map(p => p[1]);
+      const cardMinY = Math.min(...yCoords);
+
+      let scanY = 0;
+      const scanSpeed = Math.max(3, h / 220);
+
+      function renderXrayFrame() {
+        scanY += scanSpeed;
+
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(origImage, 0, 0, w, h);
+
+        if (scanY > cardMinY) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(cardCorners[0][0], cardCorners[0][1]);
+          ctx.lineTo(cardCorners[1][0], cardCorners[1][1]);
+          ctx.lineTo(cardCorners[2][0], cardCorners[2][1]);
+          ctx.lineTo(cardCorners[3][0], cardCorners[3][1]);
+          ctx.closePath();
+          ctx.clip();
+
+          ctx.beginPath();
+          ctx.rect(0, 0, w, scanY);
+          ctx.clip();
+
+          ctx.drawImage(revealedImage, 0, 0, w, h);
+          ctx.restore();
+        }
+
+        const canvasRect = mainCanvas.getBoundingClientRect();
+        const screenY = canvasRect.top + (scanY / h) * canvasRect.height;
+        laserBeam.style.top = screenY + "px";
+
+        if (scanY < h + 50) {
+          requestAnimationFrame(renderXrayFrame);
+        } else {
+          laserBeam.style.display = "none";
+          hudTitle.innerText = "SCAN COMPLETE // IDENTIFIED";
+          hudSub.innerText = "TARGET FULLY REVEALED";
+          if (navigator.vibrate) navigator.vibrate([50, 50, 150]);
+        }
+      }
+
+      requestAnimationFrame(renderXrayFrame);
+    }
+
+    /* ---------------- 刮刮樂模式 (牌背消失變成真正牌面) ---------------- */
+    function startScratchMode() {
+      hudTitle.innerText = "SENSOR ACTIVE";
+      hudSub.innerText = "RUB CARD BACK WITH FINGER TO REVEAL";
+
+      // 顯示並繪製底層純淨正面牌面於 bgCanvas，上層 mainCanvas 保持牌背供指尖擦除
+      bgCanvas.style.display = 'block';
+      bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+      bgCtx.drawImage(revealedImage, 0, 0, bgCanvas.width, bgCanvas.height);
+
+      let isTouching = false;
+
+      function isPointInCard(x, y, poly) {
+        let inside = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+          const xi = poly[i][0], yi = poly[i][1];
+          const xj = poly[j][0], yj = poly[j][1];
+          const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+          if (intersect) inside = !inside;
+        }
+        return inside;
+      }
+
+      function getPos(e) {
+        const rect = mainCanvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const scaleX = mainCanvas.width / rect.width;
+        const scaleY = mainCanvas.height / rect.height;
+        return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+      }
+
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      function scratchMove(e) {
+        if (!isTouching) return;
+        if (e.cancelable) e.preventDefault();
+        const pos = getPos(e);
+
+        if (cardCorners.length === 4 && !isPointInCard(pos.x, pos.y, cardCorners)) {
+          return;
+        }
+
+        ctx.lineWidth = mainCanvas.width * 0.09;
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+      }
+
+      mainCanvas.addEventListener('touchstart', (e) => {
+        isTouching = true;
+        const pos = getPos(e);
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+      }, { passive: false });
+      window.addEventListener('touchmove', scratchMove, { passive: false });
+      window.addEventListener('touchend', () => { isTouching = false; });
+
+      mainCanvas.addEventListener('mousedown', (e) => {
+        isTouching = true;
+        const pos = getPos(e);
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+      });
+      window.addEventListener('mousemove', scratchMove);
+      window.addEventListener('mouseup', () => { isTouching = false; });
+    }
+  </script>
+</body>
+</html>
