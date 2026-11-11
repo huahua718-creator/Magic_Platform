@@ -32,11 +32,30 @@ def get_admin_quick_reply() -> QuickReply:
     ])
 
 def create_text_msg(text: str, quick_reply=None) -> TextMessage:
-    """建立 TextMessage 並安全設定快捷選單 (避開 Pydantic v1 繼承模型在 IDE 的建構參數檢查誤判)"""
-    msg = TextMessage(text=text)
+    """建立 TextMessage 並安全設定快捷選單 (避開 Pydantic v1 繼承與 alias 模型在 IDE 的建構參數檢查誤判)"""
+    data = {"text": text}
     if quick_reply is not None:
-        msg.quick_reply = quick_reply
-    return msg
+        data["quick_reply"] = quick_reply
+    return TextMessage.parse_obj(data)
+
+def create_flex_msg(alt_text: str, contents_dict: dict) -> FlexMessage:
+    """建立 FlexMessage (避開 Pydantic v1 alias 在 IDE 的建構參數檢查誤判)"""
+    return FlexMessage.parse_obj({
+        "alt_text": alt_text,
+        "contents": FlexContainer.from_dict(contents_dict)
+    })
+
+def send_reply(reply_token: str, messages: list):
+    """發送 LINE 回覆訊息"""
+    req = ReplyMessageRequest.parse_obj({"reply_token": reply_token, "messages": messages})
+    with ApiClient(configuration) as api_client:
+        MessagingApi(api_client).reply_message(req)
+
+def send_push(to_user_id: str, messages: list):
+    """發送 LINE 主動推播訊息"""
+    req = PushMessageRequest.parse_obj({"to": to_user_id, "messages": messages})
+    with ApiClient(configuration) as api_client:
+        MessagingApi(api_client).push_message(req)
 
 app = FastAPI(title="Magic X-Ray LIFF System", version="1.0.0")
 
@@ -137,13 +156,8 @@ def handle_text_message(event):
             f"👑 是否為管理員：{'✅ 是' if user_id == ADMIN_USER_ID else '❌ 否 (與系統設定不同)'}\n"
             f"🔮 今日魔術狀態：{'🟢 已開通' if is_open else '🔒 未開通'}"
         )
-        with ApiClient(configuration) as api_client:
-            reply_msg = TextMessage(text=reply)
-            if user_id == ADMIN_USER_ID:
-                reply_msg.quick_reply = get_admin_quick_reply()
-            MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(reply_token=event.reply_token, messages=[reply_msg])
-            )
+        qr = get_admin_quick_reply() if user_id == ADMIN_USER_ID else None
+        send_reply(event.reply_token, [create_text_msg(reply, quick_reply=qr)])
         return
 
     # 1. 管理員管理指令
@@ -161,23 +175,16 @@ def handle_text_message(event):
             "━━━━━━━━━━━━━━━\n"
             "👇 點擊下方快捷按鈕可立即發送指令！"
         )
-        with ApiClient(configuration) as api_client:
-            msg_obj = create_text_msg(text=menu_text, quick_reply=get_admin_quick_reply())
-            MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(reply_token=event.reply_token, messages=[msg_obj])
-            )
+        send_reply(event.reply_token, [create_text_msg(menu_text, quick_reply=get_admin_quick_reply())])
         return
 
     if cmd == "!unlock":
         if user_id != ADMIN_USER_ID:
             print(f"⚠️ [權限警告] 使用者 {user_id} 嘗試執行 !unlock，但與設定的 ADMIN_USER_ID ({ADMIN_USER_ID}) 不符！")
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text=f"⚠️ 權限不足。\n您的 LINE User ID 為：\n{user_id}\n請將此 ID 設定至 ADMIN_USER_ID 環境變數。")]
-                    )
-                )
+            send_reply(
+                event.reply_token,
+                [create_text_msg(f"⚠️ 權限不足。\n您的 LINE User ID 為：\n{user_id}\n請將此 ID 設定至 ADMIN_USER_ID 環境變數。")]
+            )
             return
 
         secs = StateManager.unlock_today()
@@ -225,17 +232,13 @@ def handle_text_message(event):
             }
         }
 
-        with ApiClient(configuration) as api_client:
-            text_link = create_text_msg(text=f"🔗 LIFF 連結備用：\n{LIFF_URL}", quick_reply=get_admin_quick_reply())
-            MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[
-                        FlexMessage(alt_text="今日魔術已開通", contents=FlexContainer.from_dict(flex_unlock)),
-                        text_link
-                    ]
-                )
-            )
+        send_reply(
+            event.reply_token,
+            [
+                create_flex_msg("今日魔術已開通", flex_unlock),
+                create_text_msg(f"🔗 LIFF 連結備用：\n{LIFF_URL}", quick_reply=get_admin_quick_reply())
+            ]
+        )
         return
 
     elif cmd == "!status":
@@ -259,11 +262,7 @@ def handle_text_message(event):
                 f"━━━━━━━━━━━━━━━\n"
                 f"🔗 LIFF 網址：\n{LIFF_URL}"
             )
-        with ApiClient(configuration) as api_client:
-            msg_obj = create_text_msg(text=msg, quick_reply=get_admin_quick_reply())
-            MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(reply_token=event.reply_token, messages=[msg_obj])
-            )
+        send_reply(event.reply_token, [create_text_msg(msg, quick_reply=get_admin_quick_reply())])
         return
 
     elif cmd in ["!liff", "liff"]:
@@ -294,17 +293,14 @@ def handle_text_message(event):
                 ]
             }
         }
-        with ApiClient(configuration) as api_client:
-            msg_obj = create_text_msg(text=f"🔗 LIFF 直連網址：\n{LIFF_URL}", quick_reply=get_admin_quick_reply() if user_id == ADMIN_USER_ID else None)
-            MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[
-                        FlexMessage(alt_text="開啟感應鏡頭", contents=FlexContainer.from_dict(flex_liff)),
-                        msg_obj
-                    ]
-                )
-            )
+        qr = get_admin_quick_reply() if user_id == ADMIN_USER_ID else None
+        send_reply(
+            event.reply_token,
+            [
+                create_flex_msg("開啟感應鏡頭", flex_liff),
+                create_text_msg(f"🔗 LIFF 直連網址：\n{LIFF_URL}", quick_reply=qr)
+            ]
+        )
         return
 
     elif cmd == "!reset":
@@ -313,23 +309,13 @@ def handle_text_message(event):
         StateManager.reset_stage()
         info = calculate_magic_round(0)
         msg = f"🔄 輪次已歸零。\n首發模式：{info['mode_name']}\n迫牌目標：【{info['card_name']}】({info['card_filename']})"
-        with ApiClient(configuration) as api_client:
-            msg_obj = create_text_msg(text=msg, quick_reply=get_admin_quick_reply())
-            MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(reply_token=event.reply_token, messages=[msg_obj])
-            )
+        send_reply(event.reply_token, [create_text_msg(msg, quick_reply=get_admin_quick_reply())])
         return
 
     # 2. 任一人輸入「解鎖透視魔術」
     if text == "解鎖透視魔術":
         if not StateManager.is_unlocked():
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text="大師目前的感知通道尚未開啟，請稍候。")]
-                    )
-                )
+            send_reply(event.reply_token, [create_text_msg("大師目前的感知通道尚未開啟，請稍候。")])
             return
 
         # 檢查非管理員每日體驗配額 (上限 2 次)
@@ -341,10 +327,7 @@ def handle_text_message(event):
                 "您今日的體驗次數已滿（每位觀眾每日限定 2 次）。\n"
                 "感謝您的參與，請明天再來，或由魔術大師親自為您演示！"
             )
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=limit_msg)])
-                )
+            send_reply(event.reply_token, [create_text_msg(limit_msg)])
             return
 
         # 系統已解鎖且有額度：回傳表演專用 LIFF 卡片 (網址附帶使用者身分參數)
@@ -379,13 +362,7 @@ def handle_text_message(event):
             }
         }
 
-        with ApiClient(configuration) as api_client:
-            MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[FlexMessage(alt_text="開啟感應鏡頭", contents=FlexContainer.from_dict(flex_payload))]
-                )
-            )
+        send_reply(event.reply_token, [create_flex_msg("開啟感應鏡頭", flex_payload)])
 
 @handler.add(FollowEvent)
 def handle_follow_event(event):
@@ -422,15 +399,7 @@ def handle_follow_event(event):
     }
 
     try:
-        with ApiClient(configuration) as api_client:
-            MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[
-                        FlexMessage(alt_text="歡迎體驗超感應透視魔術", contents=FlexContainer.from_dict(welcome_payload))
-                    ]
-                )
-            )
+        send_reply(event.reply_token, [create_flex_msg("歡迎體驗超感應透視魔術", welcome_payload)])
     except Exception as e:
         print(f"❌ [歡迎訊息發送異常]: {e}")
 
@@ -478,7 +447,8 @@ async def liff_upload_photo(
         card_face_path=card_face_path,
         corners=corners,
         output_path=revealed_path,
-        opacity=0.88
+        opacity=0.88,
+        mode=current_round["mode"]
     )
 
     # 4. 輪次推進 + 1，並扣除該使用者 1 次額度
@@ -489,15 +459,12 @@ async def liff_upload_photo(
 
     # 5. 秘密推播通知魔術師下一張牌與模式
     try:
-        with ApiClient(configuration) as api_client:
-            msg = (
-                f"🔔 第 {stage + 1} 位表演完成 ({current_round['mode_name']})\n"
-                f"👉 下一位模式：{next_round['mode_name']}\n"
-                f"👉 請迫牌：【{next_round['card_name']}】({next_round['card_filename']})"
-            )
-            MessagingApi(api_client).push_message(
-                PushMessageRequest(to=ADMIN_USER_ID, messages=[TextMessage(text=msg)])
-            )
+        msg = (
+            f"🔔 第 {stage + 1} 位表演完成 ({current_round['mode_name']})\n"
+            f"👉 下一位模式：{next_round['mode_name']}\n"
+            f"👉 請迫牌：【{next_round['card_name']}】({next_round['card_filename']})"
+        )
+        send_push(ADMIN_USER_ID, [create_text_msg(msg)])
     except Exception as e:
         print(f"Notify admin error: {e}")
 

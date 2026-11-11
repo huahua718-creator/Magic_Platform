@@ -61,11 +61,33 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 
 def create_text_msg(text: str, quick_reply=None) -> TextMessage:
-    """建立 TextMessage 並賦予快捷選單（避開 Pydantic v1 繼承類別在 IDE 的 __init__ 靜態檢查誤判）"""
-    msg = TextMessage(text=text)
+    """建立 TextMessage 並賦予快捷選單（避開 Pydantic v1 繼承與 alias 模型在 IDE 的 __init__ 靜態檢查誤判）"""
+    data = {"text": text}
     if quick_reply is not None:
-        msg.quick_reply = quick_reply
-    return msg
+        data["quick_reply"] = quick_reply
+    return TextMessage.parse_obj(data)
+
+
+def create_flex_msg(alt_text: str, contents_dict: dict) -> FlexMessage:
+    """建立 FlexMessage (避開 Pydantic v1 alias 在 IDE 的建構參數檢查誤判)"""
+    return FlexMessage.parse_obj({
+        "alt_text": alt_text,
+        "contents": FlexContainer.from_dict(contents_dict)
+    })
+
+
+def send_reply(reply_token: str, messages: list):
+    """發送 LINE 回覆訊息"""
+    req = ReplyMessageRequest.parse_obj({"reply_token": reply_token, "messages": messages})
+    with ApiClient(configuration) as api_client:
+        MessagingApi(api_client).reply_message(req)
+
+
+def send_push(to_user_id: str, messages: list):
+    """發送 LINE 主動推播訊息"""
+    req = PushMessageRequest.parse_obj({"to": to_user_id, "messages": messages})
+    with ApiClient(configuration) as api_client:
+        MessagingApi(api_client).push_message(req)
 
 
 @app.get("/")
@@ -174,10 +196,7 @@ def handle_follow(event):
         quick_reply=build_quick_reply(user_id)
     )
     try:
-        with ApiClient(configuration) as api_client:
-            MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(reply_token=event.reply_token, messages=[welcome_msg])
-            )
+        send_reply(event.reply_token, [welcome_msg])
     except Exception as e:
         print(f"Follow reply error: {e}")
 
@@ -202,29 +221,20 @@ def handle_text_message(event):
             f"🎖️ 帳號身分：{profile['role']}\n"
             f"📅 訂閱到期：{profile['expire_at'] or '未訂閱'}"
         )
-        with ApiClient(configuration) as api_client:
-            MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text=reply, quick_reply=quick_reply)])
-            )
+        send_reply(event.reply_token, [create_text_msg(reply, quick_reply=quick_reply)])
         return
 
     # 2. 魔術文字/滑動選單 (所有魔術總入口)
     if cmd in ["魔術選單", "選單", "!menu", "menu", "tricks", "!help", "指令"]:
         carousel_dict = build_magic_carousel(user_id)
         helper_txt = create_text_msg(
-            text="🎩 請左右滑動上方卡片挑選要演出的魔術，或點擊下方快捷按鈕：",
+            "🎩 請左右滑動上方卡片挑選要演出的魔術，或點擊下方快捷按鈕：",
             quick_reply=quick_reply
         )
-        with ApiClient(configuration) as api_client:
-            MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[
-                        FlexMessage(alt_text="數位魔術櫃選單", contents=FlexContainer.from_dict(carousel_dict)),
-                        helper_txt
-                    ]
-                )
-            )
+        send_reply(
+            event.reply_token,
+            [create_flex_msg("數位魔術櫃選單", carousel_dict), helper_txt]
+        )
         return
 
     # 3. 查詢我的訂閱狀態
@@ -258,10 +268,7 @@ def handle_text_message(event):
                 f"請複製您的專屬 User ID：\n{user_id}\n\n"
                 "聯繫管理員或透過訂閱付款開通，即可無限次使用 X光透視、數位透視眼 AR 與未來所有新魔術！"
             )
-        with ApiClient(configuration) as api_client:
-            MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text=sub_msg, quick_reply=quick_reply)])
-            )
+        send_reply(event.reply_token, [create_text_msg(sub_msg, quick_reply=quick_reply)])
         return
 
     # 4. 超級管理員：開通 / 停用訂閱戶指令
@@ -275,19 +282,13 @@ def handle_text_message(event):
                 reply_txt = f"✅ 已成功為用戶開通訂閱！\n👤 用戶：{target_uid}\n⏰ 到期日：{rec['expire_at']}\n🔓 權限：全系列魔術解鎖"
                 # 同步私訊通知訂閱者
                 try:
-                    with ApiClient(configuration) as api_client:
-                        MessagingApi(api_client).push_message(
-                            PushMessageRequest(
-                                to=target_uid,
-                                messages=[create_text_msg(text=f"🎉 恭喜！您的【奇幻魔術 SaaS 訂閱會員】已開通（有效期 {days} 天，至 {rec['expire_at'][:10]}）！\n現在請輸入「魔術選單」立即開始演出！", quick_reply=build_quick_reply(target_uid))]
-                            )
-                        )
+                    send_push(
+                        target_uid,
+                        [create_text_msg(f"🎉 恭喜！您的【奇幻魔術 SaaS 訂閱會員】已開通（有效期 {days} 天，至 {rec['expire_at'][:10]}）！\n現在請輸入「魔術選單」立即開始演出！", quick_reply=build_quick_reply(target_uid))]
+                    )
                 except Exception as pe:
                     reply_txt += f"\n⚠️ (私訊通知對方失敗: {pe})"
-                with ApiClient(configuration) as api_client:
-                    MessagingApi(api_client).reply_message(
-                        ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text=reply_txt, quick_reply=quick_reply)])
-                    )
+                send_reply(event.reply_token, [create_text_msg(reply_txt, quick_reply=quick_reply)])
                 return
 
         elif cmd.startswith("!revoke "):
@@ -295,10 +296,7 @@ def handle_text_message(event):
             if len(parts) >= 2:
                 target_uid = parts[1]
                 SubscriptionManager.revoke_subscription(target_uid)
-                with ApiClient(configuration) as api_client:
-                    MessagingApi(api_client).reply_message(
-                        ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text=f"🚫 已停用用戶 {target_uid} 的訂閱權限。", quick_reply=quick_reply)])
-                    )
+                send_reply(event.reply_token, [create_text_msg(f"🚫 已停用用戶 {target_uid} 的訂閱權限。", quick_reply=quick_reply)])
                 return
 
         elif cmd == "!subscribers":
@@ -307,10 +305,7 @@ def handle_text_message(event):
             for s in subs[:15]:
                 uid_short = s.get("user_id", "")[:10] + "..."
                 lines.append(f"• {uid_short} | {s.get('status')} | 至 {str(s.get('expire_at'))[:10]}")
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text="\n".join(lines), quick_reply=quick_reply)])
-                )
+            send_reply(event.reply_token, [create_text_msg("\n".join(lines), quick_reply=quick_reply)])
             return
 
     # 5. 啟動指定魔術 (!play <trick_id> 或相容舊指令 !unlock)
@@ -318,19 +313,13 @@ def handle_text_message(event):
         trick_id = "xray_card" if cmd == "!unlock" else text.split()[1].strip().lower()
         trick = TRICK_REGISTRY.get(trick_id)
         if not trick:
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text="❌ 找不到指定的魔術項目。", quick_reply=quick_reply)])
-                )
+            send_reply(event.reply_token, [create_text_msg("❌ 找不到指定的魔術項目。", quick_reply=quick_reply)])
             return
 
         # 檢查訂閱權限或試玩配額
         access = SubscriptionManager.can_access_trick(user_id, trick_id)
         if not access["allowed"]:
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text=access["message"], quick_reply=quick_reply)])
-                )
+            send_reply(event.reply_token, [create_text_msg(access["message"], quick_reply=quick_reply)])
             return
 
         # 生成專屬防偽啟動 Token 與魔術師獨立網址
@@ -376,16 +365,13 @@ def handle_text_message(event):
                     ]
                 }
             }
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[
-                            FlexMessage(alt_text="X光透視魔術已啟動", contents=FlexContainer.from_dict(flex_xray)),
-                            create_text_msg(text=f"🔗 觀眾共用連結（請給觀眾或掃描）：\n{launch_url}", quick_reply=quick_reply)
-                        ]
-                    )
-                )
+            send_reply(
+                event.reply_token,
+                [
+                    create_flex_msg("X光透視魔術已啟動", flex_xray),
+                    create_text_msg(f"🔗 觀眾共用連結（請給觀眾或掃描）：\n{launch_url}", quick_reply=quick_reply)
+                ]
+            )
             return
 
         elif trick_id == "keycard_ar":
@@ -413,16 +399,13 @@ def handle_text_message(event):
                     ]
                 }
             }
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[
-                            FlexMessage(alt_text="數位透視眼 AR 已授權", contents=FlexContainer.from_dict(flex_keycard)),
-                            create_text_msg(text=f"🔗 數位透視眼直連網址：\n{launch_url}", quick_reply=quick_reply)
-                        ]
-                    )
-                )
+            send_reply(
+                event.reply_token,
+                [
+                    create_flex_msg("數位透視眼 AR 已授權", flex_keycard),
+                    create_text_msg(f"🔗 數位透視眼直連網址：\n{launch_url}", quick_reply=quick_reply)
+                ]
+            )
             return
 
         elif trick_id == "frozen_proof_ar":
@@ -450,16 +433,13 @@ def handle_text_message(event):
                     ]
                 }
             }
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[
-                            FlexMessage(alt_text="記憶流痕 AR 已授權", contents=FlexContainer.from_dict(flex_frozen)),
-                            create_text_msg(text=f"🔗 記憶流痕主控台網址：\n{launch_url}", quick_reply=quick_reply)
-                        ]
-                    )
-                )
+            send_reply(
+                event.reply_token,
+                [
+                    create_flex_msg("記憶流痕 AR 已授權", flex_frozen),
+                    create_text_msg(f"🔗 記憶流痕主控台網址：\n{launch_url}", quick_reply=quick_reply)
+                ]
+            )
             return
 
         elif trick_id == "drawcards":
@@ -487,16 +467,13 @@ def handle_text_message(event):
                     ]
                 }
             }
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[
-                            FlexMessage(alt_text="多人畫牌已授權", contents=FlexContainer.from_dict(flex_drawcards)),
-                            create_text_msg(text=f"🔗 多人畫牌直連網址：\n{launch_url}", quick_reply=quick_reply)
-                        ]
-                    )
-                )
+            send_reply(
+                event.reply_token,
+                [
+                    create_flex_msg("多人畫牌已授權", flex_drawcards),
+                    create_text_msg(f"🔗 多人畫牌直連網址：\n{launch_url}", quick_reply=quick_reply)
+                ]
+            )
             return
 
     # 6. 重設 X 光透視輪次 (!reset)
@@ -504,20 +481,14 @@ def handle_text_message(event):
         SubscriptionManager.reset_session_stage(user_id, "xray_card")
         info = calculate_magic_round(0)
         msg = f"🔄 您的 X光透視輪次已歸零。\n首發模式：{info['mode_name']}\n迫牌目標：【{info['card_name']}】({info['card_filename']})"
-        with ApiClient(configuration) as api_client:
-            MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text=msg, quick_reply=quick_reply)])
-            )
+        send_reply(event.reply_token, [create_text_msg(msg, quick_reply=quick_reply)])
         return
 
     # 7. 相容「解鎖透視魔術」關鍵字
     if text == "解鎖透視魔術":
         # 如果沒有專屬 mid，預設檢查發送者自己的開通或導引至選單
         if not SubscriptionManager.is_session_unlocked(user_id, "xray_card") and not SubscriptionManager.is_session_unlocked(ADMIN_USER_ID, "xray_card"):
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).reply_message(
-                    ReplyMessageRequest(reply_token=event.reply_token, messages=[create_text_msg(text="大師目前的感知通道尚未開啟，請稍候或輸入「魔術選單」。", quick_reply=quick_reply)])
-                )
+            send_reply(event.reply_token, [create_text_msg("大師目前的感知通道尚未開啟，請稍候或輸入「魔術選單」。", quick_reply=quick_reply)])
             return
 
         target_mid = user_id if SubscriptionManager.is_session_unlocked(user_id, "xray_card") else ADMIN_USER_ID
@@ -542,10 +513,7 @@ def handle_text_message(event):
                 ]
             }
         }
-        with ApiClient(configuration) as api_client:
-            MessagingApi(api_client).reply_message(
-                ReplyMessageRequest(reply_token=event.reply_token, messages=[FlexMessage(alt_text="開啟感應鏡頭", contents=FlexContainer.from_dict(flex_payload))])
-            )
+        send_reply(event.reply_token, [create_flex_msg("開啟感應鏡頭", flex_payload)])
 
 
 @app.post("/api/liff/upload")
@@ -609,15 +577,12 @@ async def liff_upload_photo(
 
     # 只秘密推播給「正在表演的那位魔術師 (magician_id)」!
     try:
-        with ApiClient(configuration) as api_client:
-            msg = (
-                f"🔔 第 {stage + 1} 位表演完成 ({current_round['mode_name']})\n"
-                f"👉 下一位模式：{next_round['mode_name']}\n"
-                f"👉 請迫牌：【{next_round['card_name']}】({next_round['card_filename']})"
-            )
-            MessagingApi(api_client).push_message(
-                PushMessageRequest(to=magician_id, messages=[create_text_msg(text=msg, quick_reply=build_quick_reply(magician_id))])
-            )
+        msg = (
+            f"🔔 第 {stage + 1} 位表演完成 ({current_round['mode_name']})\n"
+            f"👉 下一位模式：{next_round['mode_name']}\n"
+            f"👉 請迫牌：【{next_round['card_name']}】({next_round['card_filename']})"
+        )
+        send_push(magician_id, [create_text_msg(msg, quick_reply=build_quick_reply(magician_id))])
     except Exception as e:
         print(f"Notify magician {magician_id} error: {e}")
 
