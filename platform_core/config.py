@@ -46,5 +46,15 @@ TRICK_REGISTRY = {
         "tier": "pro",    # pro 訂閱專屬
         "free_trial_daily": 0,  # 僅限訂閱會員使用
         "color": "#00aaff"
+    },
+    "frozen_proof_ar": {
+        "id": "frozen_proof_ar",
+        "name": "記憶流痕 (Frozen Proof AR)",
+        "short_name": "記憶流痕 AR",
+        "subtitle": "雙機黑屏時鐘手勢隱密選牌 + MindAR 即時相機留影預言",
+        "entry_path": "/tricks/frozen/index.html",
+        "tier": "pro",
+        "free_trial_daily": 0,
+        "color": "#a855f7"
     }
 }

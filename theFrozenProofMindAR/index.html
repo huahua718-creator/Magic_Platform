@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>記憶流痕</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/renderers/CSS3DRenderer.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/renderers/CSS3DRenderer.js"
+        }
+      }
+    </script>
+
+    <style>
+        html, body {
+            background-color: #000 !important;
+            margin: 0; padding: 0;
+            width: 100vw; height: 100vh;
+            overflow: hidden;
+            -webkit-user-select: none; user-select: none;
+        }
+        .mindar-ui-overlay { display: none !important; }
+        
+        #robot-camera-view-container {
+            position: fixed; inset: 0; z-index: 10;
+            background-color: #000;
+        }
+        #robot-camera-view-container video, 
+        #robot-camera-view-container canvas {
+            position: absolute !important;
+            width: 100vw !important; height: 100vh !important;
+            top: 0 !important; left: 0 !important;
+            object-fit: cover !important;
+        }
+
+        /* 前置鏡頭水平鏡像智慧翻轉 */
+        .camera-mirrored video,
+        .camera-mirrored canvas {
+            transform: scaleX(-1) !important;
+        }
+
+        /* 最終生成照片解鎖長按儲存 */
+        .saveable-magic-photo {
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            object-fit: cover !important;
+            z-index: 999999 !important;
+            -webkit-touch-callout: default !important;
+            -webkit-user-select: auto !important;
+            user-select: auto !important;
+            pointer-events: auto !important;
+        }
+
+        /* 頂級畫廊款：極慢速優雅呼吸燈 */
+        .ghost-pulse {
+            animation: ghostPulse 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes ghostPulse {
+            0%, 100% { opacity: 0.05; }
+            50% { opacity: 0.35; }
+        }
+    </style>
+</head>
+<body class="bg-black text-white">
+
+    <div id="app-container" class="w-full h-full bg-black"></div>
+
+    <script>
+        // 錯誤安全攔截器
+        window.addEventListener('error', function(e) {
+            const app = document.getElementById('app-container');
+            if (app) {
+                app.innerHTML = `
+                    <div class="p-6 text-red-500 font-mono text-xs space-y-2 bg-zinc-950 h-screen w-screen flex flex-col justify-center">
+                        <p class="font-bold text-sm">⚠️ 偵測到執行期核心錯誤：</p>
+                        <p class="bg-red-950/30 p-3 rounded border border-red-900/50 break-all">${e.message}</p>
+                    </div>
+                `;
+            }
+        });
+
+        // --- 1. FIREBASE 初始化 ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAKrHMMbS6RHzOUgduseEOvUzjKA1YWLo",
+            authDomain: "the-frozen-proof.firebaseapp.com",
+            databaseURL: "https://the-frozen-proof-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "the-frozen-proof",
+            storageBucket: "the-frozen-proof.firebasestorage.app",
+            messagingSenderId: "414127963950",
+            appId: "1:414127963950:web:b9822ebd07e5097a8a04bf",
+            measurementId: "G-CENFSW3FR7"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // --- 2. 路由分流與 SaaS 訂閱授權參數 ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const mode = urlParams.get('mode');
+        const paramRoom = urlParams.get('room');
+        const mid = urlParams.get('mid') || '';
+        const token = urlParams.get('token') || '';
+        
+        let baseRoom = paramRoom;
+        const appContainer = document.getElementById('app-container');
+
+        async function bootstrapFrozenProof() {
+            // 驗證平台訂閱授權狀態 (若在整合平台伺服器下運行)
+            try {
+                const verifyRes = await fetch(`/api/auth/verify?trick=frozen_proof_ar&mid=${encodeURIComponent(mid)}&token=${encodeURIComponent(token)}`);
+                if (verifyRes.ok) {
+                    const data = await verifyRes.json();
+                    if (!data.authorized) {
+                        appContainer.innerHTML = `
+                            <div class="fixed inset-0 w-screen h-screen flex flex-col items-center justify-center bg-zinc-950 p-6 text-center space-y-4">
+                                <div class="text-4xl">🔒</div>
+                                <h2 class="text-xl font-bold text-red-400">未經授權的存取</h2>
+                                <p class="text-sm text-zinc-400 max-w-xs">${data.message || '此魔術（記憶流痕）為訂閱會員專屬道具，請從認證官方帳號選單進入！'}</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.log("Standalone mode");
+            }
+
+            if (mode === 'master' || (!mode && !paramRoom)) {
+                initSequentialMasterMode();
+            } else if (baseRoom) {
+                initSpectatorSplash();
+            }
+        }
+
+        // ==========================================
+        // 【核心組件】動態相機 DOM 注入器 (支援雙端調用)
+        // ==========================================
+        function injectCameraDOM() {
+            if (document.getElementById('robot-camera-view-container')) return;
+            
+            const cameraBundle = document.createElement('div');
+            cameraBundle.innerHTML = `
+                <div id="robot-camera-view-container"></div>
+                <button id="camera-toggle-btn" class="fixed bottom-8 right-8 z-[99] bg-black/40 backdrop-blur-md border border-zinc-800/80 text-zinc-300 w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-lg active:scale-90 transition-all hidden">🔄</button>
+                <div id="countdown-overlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/10 pointer-events-none hidden">
+                    <span id="countdown-text" class="text-white text-8xl font-black font-mono tracking-tighter scale-50 opacity-0 transition-all duration-300">3</span>
+                </div>
+                <div id="shutter-flash" class="fixed inset-0 z-50 bg-white opacity-0 pointer-events-none transition-opacity duration-100"></div>
+            `;
+            appContainer.appendChild(cameraBundle);
+        }
+
+        // ==========================================
+        // 【魔術師端】✨ 支援單人/連線雙模主控 + 智慧感知分流
+        // ==========================================
+        let currentTargetIndex = 1; 
+        let globalTotalPlayers = 0; 
+        
+        function initSequentialMasterMode() {
+            if (!baseRoom) {
+                baseRoom = Math.floor(1000 + Math.random() * 9000).toString();
+            }
+
+            let clockTicksHtml = '';
+            for (let i = 0; i < 12; i++) {
+                let angle = i * 30;
+                clockTicksHtml += `
+                    <div class="absolute bg-zinc-400/40" 
+                         style="top: 10px; left: 79px; width: 2px; height: 15px; transform-origin: 1px 70px; transform: rotate(${angle}deg);">
+                    </div>`;
+            }
+            
+            appContainer.innerHTML = `
+                <div id="master-ui" class="fixed inset-0 w-screen h-screen flex flex-col items-center justify-center bg-black z-[99999] cursor-pointer">
+                    <div class="flex flex-col items-center p-6">
+                        <div id="qrcode" class="p-3 bg-black rounded-xl border border-zinc-900 shadow-2xl"></div>
+                        <p class="text-zinc-700 text-[10px] mt-8 tracking-widest animate-pulse">輕觸收起 QR Code 進入選擇畫面</p>
+                    </div>
+                </div>
+                
+                <div id="stealth-curtain" class="hidden fixed inset-0 w-screen h-screen bg-black z-[100000] touch-none select-none">
+                    <div id="master-pointer-overlay" class="absolute inset-0 w-full h-full z-10 bg-transparent"></div>
+                    
+                    <div id="clock-guide" class="absolute pointer-events-none opacity-0 transition-opacity duration-150 z-20" 
+                         style="width: 160px; height: 160px; transform: translate(-50%, -50%);">
+                        ${clockTicksHtml}
+                    </div>
+                    
+                    <div id="indicators-container" class="absolute bottom-8 left-6 right-6 flex justify-center items-center space-x-4 pointer-events-none z-20"></div>
+                    <div id="hidden-reset-zone" class="absolute top-0 left-0 right-0 h-12 z-30 bg-transparent cursor-pointer"></div>
+                </div>
+            `;
+            
+            const spectatorUrl = `${window.location.origin}${window.location.pathname}?room=${baseRoom}&mid=${encodeURIComponent(mid)}&token=${encodeURIComponent(token)}&openExternalBrowser=1`;
+            new QRCode(document.getElementById("qrcode"), { text: spectatorUrl, width: 200, height: 200, colorDark : "#ffffff", colorLight : "#000000" });
+            
+            document.getElementById('master-ui').addEventListener('click', () => { 
+                document.getElementById('master-ui').classList.add('hidden');
+                document.getElementById('stealth-curtain').classList.remove('hidden'); 
+            });
+            
+            db.ref(`rooms/${baseRoom}/nextIndex`).on('value', (snapshot) => {
+                globalTotalPlayers = snapshot.val() || 0;
+                updateMasterIndicators();
+            });
+
+            setupMasterClockGestures();
+        }
+
+        function updateMasterIndicators() {
+            const container = document.getElementById('indicators-container');
+            if (!container) return;
+            container.innerHTML = '';
+            
+            for (let i = 1; i <= globalTotalPlayers; i++) {
+                const dot = document.createElement('div');
+                if (i < currentTargetIndex) {
+                    dot.className = "w-1.5 h-1.5 rounded-full bg-zinc-600 opacity-10 transition-all duration-300";
+                } else if (i === currentTargetIndex) {
+                    dot.className = "w-1.5 h-1.5 rounded-full bg-zinc-500 opacity-20 animate-pulse transition-all duration-200";
+                } else {
+                    dot.className = "w-1 h-1 rounded-full bg-zinc-900 opacity-5";
+                }
+                container.appendChild(dot);
+            }
+        }
+
+        function setupMasterClockGestures() {
+            const overlay = document.getElementById('master-pointer-overlay');
+            const clockGuide = document.getElementById('clock-guide');
+            
+            let longPressTimer = null;
+            let jokerTimer = null;         
+            let isLongPressing = false;
+            let isJokerActive = false;     
+            let startPos = { x: 0, y: 0 };
+            let activeSuit = '';
+            let activeRank = '';
+            let lastTapTime = 0;
+            let lastTapQuadrant = '';
+
+            function getQuadrantSuit(x, y) {
+                const W = window.innerWidth; const H = window.innerHeight;
+                if (x < W / 2) {
+                    return y < H / 2 ? '♣' : '♠';
+                } else {
+                    return y < H / 2 ? '♦' : '♥';
+                }
+            }
+
+            function getRankFromVector(dx, dy) {
+                let angleRad = Math.atan2(-dy, dx); 
+                let angleDeg = angleRad * (180 / Math.PI);
+                let clockDeg = 90 - angleDeg; 
+                
+                if (clockDeg < 0) clockDeg += 360;
+                if (clockDeg >= 360) clockDeg -= 360;
+                
+                let hour = Math.round(clockDeg / 30);
+                if (hour === 0) hour = 12;
+                
+                const ranks = {
+                    1: 'A', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6',
+                    7: '7', 8: '8', 9: '9', 10: '10', 11: 'J', 12: 'Q'
+                };
+                return ranks[hour] || '';
+            }
+
+            const resetZone = document.getElementById('hidden-reset-zone');
+            let resetTimer = null;
+            resetZone.addEventListener('pointerdown', () => {
+                resetTimer = setTimeout(() => { resetSequentialSystem(); }, 3000);
+            });
+            resetZone.addEventListener('pointerup', () => clearTimeout(resetTimer));
+
+            overlay.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                const suit = getQuadrantSuit(e.clientX, e.clientY);
+                const now = Date.now();
+                
+                if (now - lastTapTime < 300 && lastTapQuadrant === suit) {
+                    clearTimeout(longPressTimer);
+                    clearTimeout(jokerTimer);
+                    isLongPressing = false;
+                    isJokerActive = false;
+                    handleCardSelectionComplete("K" + suit);
+                    lastTapTime = 0;
+                    return;
+                }
+                
+                lastTapTime = now;
+                lastTapQuadrant = suit;
+                
+                startPos = { x: e.clientX, y: e.clientY };
+                activeSuit = suit;
+                activeRank = '';
+                isLongPressing = false;
+                isJokerActive = false;
+                
+                longPressTimer = setTimeout(() => {
+                    isLongPressing = true;
+                    if (navigator.vibrate) navigator.vibrate(35);
+                    if (clockGuide && !isJokerActive) {
+                        clockGuide.style.left = `${startPos.x}px`;
+                        clockGuide.style.top = `${startPos.y}px`;
+                        clockGuide.style.opacity = "1";
+                    }
+                }, 200);
+
+                jokerTimer = setTimeout(() => {
+                    isJokerActive = true;
+                    if (clockGuide) clockGuide.style.opacity = "0"; 
+                    if (navigator.vibrate) navigator.vibrate([80, 40, 80]); 
+                }, 1500);
+            });
+
+            overlay.addEventListener('pointermove', (e) => {
+                let dx = e.clientX - startPos.x;
+                let dy = e.clientY - startPos.y;
+                let dist = Math.sqrt(dx*dx + dy*dy);
+
+                if (dist > 20 && !isJokerActive) {
+                    clearTimeout(jokerTimer);
+                }
+
+                if (!isLongPressing) {
+                    if (dist > 15) clearTimeout(longPressTimer);
+                    return;
+                }
+                
+                if (isJokerActive) return;
+
+                if (dist > 25) { 
+                    activeRank = getRankFromVector(dx, dy);
+                } else {
+                    activeRank = '';
+                }
+            });
+
+            const handlePointerUp = (e) => {
+                clearTimeout(longPressTimer);
+                clearTimeout(jokerTimer); 
+                
+                if (clockGuide) clockGuide.style.opacity = "0";
+
+                if (isJokerActive) {
+                    handleCardSelectionComplete("Joker");
+                    isJokerActive = false;
+                    isLongPressing = false;
+                    return;
+                }
+
+                if (isLongPressing && activeRank) {
+                    handleCardSelectionComplete(activeRank + activeSuit);
+                }
+                isLongPressing = false;
+            };
+
+            overlay.addEventListener('pointerup', handlePointerUp);
+            overlay.addEventListener('pointercancel', handlePointerUp);
+        }
+
+        // 🃏 核心智慧路由分流調整
+        function handleCardSelectionComplete(cardName) {
+            // 1. 同步寫入 Firebase 雲端資料庫
+            db.ref(`rooms/${baseRoom}/cards/${currentTargetIndex}`).set({ 
+                forcedCard: cardName, 
+                timestamp: firebase.database.ServerValue.TIMESTAMP 
+            });
+            currentTargetIndex++;
+            
+            // 同時備份至本地變數
+            forcedCardName = cardName; 
+            
+            if (navigator.vibrate) navigator.vibrate([60, 30, 60]); 
+
+            // 2. ✨ 智慧環境判定分流
+            if (globalTotalPlayers > 0) {
+                // 【連線模式】：有觀眾掃碼！魔術師手機留在此黑色操控畫面，僅重新整理底部灰點狀態
+                updateMasterIndicators();
+            } else {
+                // 【單人模式】：沒有任何觀眾！直接關閉控制板，無縫開啟本地相機與 AR 掃描
+                document.getElementById('stealth-curtain').classList.add('hidden');
+                injectCameraDOM();
+                startThreeCameraAR();
+            }
+        }
+
+        function resetSequentialSystem() {
+            currentTargetIndex = 1;
+            db.ref(`rooms/${baseRoom}`).remove();
+            updateMasterIndicators();
+            if (navigator.vibrate) navigator.vibrate(400);
+        }
+
+        // ==========================================
+        // 【AR 鏡頭 / 凍結快門 / 渲染保存】
+        // ==========================================
+        let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
+        let hasTriggered = false; let chosenFacingMode = 'environment';
+        let myPlayerIndex = null; let isCameraReady = false;
+        
+        let userClickedReveal = false;
+        let animationStarted = false;
+        let animationComplete = false; 
+
+        const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+        navigator.mediaDevices.getUserMedia = function(constraints) {
+            if (constraints && constraints.video) {
+                if (typeof constraints.video === 'object') {
+                    constraints.video.facingMode = chosenFacingMode; 
+                } else {
+                    constraints.video = { facingMode: chosenFacingMode };
+                }
+            }
+            return originalGetUserMedia(constraints);
+        };
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && baseRoom && myPlayerIndex) {
+                startDatabaseListener();
+            }
+        });
+
+        function initSpectatorSplash() {
+            appContainer.innerHTML = `
+                <div id="splash-screen" class="fixed inset-0 w-screen h-screen bg-black flex flex-col justify-between items-center z-[99999] cursor-pointer py-24 px-8 select-none">
+                    <div></div>
+                    <div id="splash-text-container" class="text-center space-y-6 transition-all duration-500 ease-in-out">
+                        <div class="space-y-2.5">
+                            <h1 class="text-zinc-200 text-xl sm:text-2xl font-light tracking-[0.4em] font-serif pr-[-0.4em]">記憶流痕</h1>
+                            <p class="text-zinc-500 text-[10px] sm:text-xs font-light tracking-[0.25em] uppercase font-mono">─ The Frozen Proof ─</p>
+                        </div>
+                        <p class="text-zinc-400 text-xs font-light tracking-[0.15em] leading-relaxed pt-2">魔術，讓我們連結了這一刻</p>
+                    </div>
+                    <div id="splash-action-hint" class="ghost-pulse text-zinc-600 text-[10px] tracking-[0.4em] uppercase font-light">── 輕觸螢幕 ‧ 開始記錄 ──</div>
+                </div>
+            `;
+            injectCameraDOM();
+            
+            document.getElementById('splash-screen').addEventListener('click', () => {
+                const actionHint = document.getElementById('splash-action-hint');
+                if (actionHint) actionHint.remove();
+                
+                const textContainer = document.getElementById('splash-text-container');
+                if (textContainer) {
+                    textContainer.className = "text-center space-y-5 opacity-40 scale-95 transition-all duration-700";
+                    textContainer.innerHTML = `<p class="text-zinc-400 text-sm font-light tracking-[0.3em] animate-pulse">尋求你的見證.........</p>`;
+                }
+                
+                setTimeout(() => { startThreeCameraAR(); }, 200);
+
+                const savedRoom = localStorage.getItem('magic_frozen_room');
+                const savedIndex = localStorage.getItem('magic_frozen_index');
+
+                if (savedRoom === baseRoom && savedIndex) {
+                    myPlayerIndex = parseInt(savedIndex);
+                    if (isCameraReady) { startDatabaseListener(); }
+                } else {
+                    db.ref(`rooms/${baseRoom}/nextIndex`).transaction((currentValue) => {
+                        return (currentValue || 0) + 1;
+                    }, (error, committed, snapshot) => {
+                        if (committed) {
+                            myPlayerIndex = snapshot.val(); 
+                            localStorage.setItem('magic_frozen_room', baseRoom);
+                            localStorage.setItem('magic_frozen_index', myPlayerIndex);
+                            if (isCameraReady) { startDatabaseListener(); }
+                        }
+                    });
+                }
+            });
+        }
+
+        async function startThreeCameraAR() {
+            try {
+                const threeModule = await import("three"); window.THREE = threeModule; 
+                const mindarModule = await import("https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-three.prod.js");
+                const container = document.getElementById('robot-camera-view-container');
+                
+                if (chosenFacingMode === 'user') {
+                    container.classList.add('camera-mirrored');
+                } else {
+                    container.classList.remove('camera-mirrored');
+                }
+                
+                mindarThree = new mindarModule.MindARThree({
+                    container: container,
+                    imageTargetSrc: './targets.mind',
+                    uiLoading: "no", uiScanning: "no", uiError: "no",
+                    rendererOptions: { preserveDrawingBuffer: true }
+                });
+                
+                scene = mindarThree.scene;
+                const { renderer, camera } = mindarThree;
+                const geometry = new THREE.PlaneGeometry(1, 1.4);
+                cardMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 });
+                cardPlane = new THREE.Mesh(geometry, cardMaterial);
+                
+                const anchor = mindarThree.addAnchor(0);
+                anchor.group.add(cardPlane);
+
+                anchor.onTargetFound = () => {
+                    if (!hasTriggered) {
+                        hasTriggered = true;
+                        runMagicSequence();
+                    }
+                };
+
+                await mindarThree.start();
+                isCameraReady = true;
+                if (document.getElementById('splash-screen')) document.getElementById('splash-screen').remove();
+                
+                setupCameraToggleButton();
+                if (myPlayerIndex !== null) { startDatabaseListener(); }
+                
+                renderer.setAnimationLoop(() => { renderer.render(scene, camera); });
+            } catch (err) { console.error(err); }
+        }
+
+        function setupCameraToggleButton() {
+            const toggleBtn = document.getElementById('camera-toggle-btn');
+            if (!toggleBtn) return;
+            toggleBtn.classList.remove('hidden');
+            toggleBtn.onclick = async (e) => {
+                e.stopPropagation(); toggleBtn.classList.add('pointer-events-none', 'opacity-50');
+                if (mindarThree) { await mindarThree.stop(); document.getElementById('robot-camera-view-container').innerHTML = ''; }
+                isCameraReady = false;
+                chosenFacingMode = (chosenFacingMode === 'environment') ? 'user' : 'environment';
+                await startThreeCameraAR();
+                toggleBtn.classList.remove('pointer-events-none', 'opacity-50');
+            };
+        }
+
+        function startDatabaseListener() {
+            if (!baseRoom || !myPlayerIndex) return;
+            db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
+            db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data && data.forcedCard) {
+                    forcedCardName = data.forcedCard;
+                    
+                    if (userClickedReveal && !animationStarted) {
+                        db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
+                        const clickOverlay = document.getElementById('absolute-touch-catcher');
+                        if (clickOverlay) clickOverlay.remove();
+                        animationStarted = true;
+                        executeReveal();
+                    }
+                }
+            });
+        }
+
+        function runMagicSequence() {
+            if (document.getElementById('camera-toggle-btn')) document.getElementById('camera-toggle-btn').remove();
+            const overlay = document.getElementById('countdown-overlay');
+            const text = document.getElementById('countdown-text');
+            overlay.classList.remove('hidden');
+
+            let count = 3;
+            function showNextNumber() {
+                if (count > 0) {
+                    text.innerText = count;
+                    text.className = "text-white text-9xl font-black font-mono scale-50 opacity-0";
+                    setTimeout(() => { text.className = "text-white text-9xl font-black font-mono scale-110 opacity-100 transition-all duration-200 ease-out"; }, 50);
+                    count--; setTimeout(showNextNumber, 1000);
+                } else { triggerCameraShutter(); }
+            }
+            showNextNumber();
+        }
+
+        function triggerCameraShutter() {
+            const overlay = document.getElementById('countdown-overlay');
+            const flash = document.getElementById('shutter-flash');
+            const video = document.querySelector('#robot-camera-view-container video');
+            
+            overlay.classList.add('hidden'); 
+            flash.style.opacity = "0.9";
+            setTimeout(() => { flash.style.opacity = "0"; }, 150);
+
+            if (video) { video.pause(); } 
+
+            cardPlane.updateMatrixWorld(true);
+            mindarThree.camera.updateMatrixWorld(true);
+            
+            const staticCamera = new THREE.PerspectiveCamera();
+            staticCamera.matrixAutoUpdate = false;
+            staticCamera.matrixWorld.copy(mindarThree.camera.matrixWorld);
+            staticCamera.matrixWorldInverse.copy(mindarThree.camera.matrixWorldInverse);
+            staticCamera.projectionMatrix.copy(mindarThree.camera.projectionMatrix);
+            window.currentStaticCamera = staticCamera; 
+
+            const worldMatrix = cardPlane.matrixWorld.clone();
+            scene.add(cardPlane); 
+            cardPlane.matrixAutoUpdate = true;
+            cardPlane.matrix.copy(worldMatrix);
+            cardPlane.matrix.decompose(cardPlane.position, cardPlane.quaternion, cardPlane.scale);
+            
+            mindarThree.renderer.setAnimationLoop(null);
+            
+            function staticRenderLoop() {
+                if (mindarThree && mindarThree.renderer) {
+                    mindarThree.renderer.render(scene, staticCamera);
+                }
+                if (!animationComplete) {
+                    requestAnimationFrame(staticRenderLoop);
+                }
+            }
+            requestAnimationFrame(staticRenderLoop);
+
+            const clickOverlay = document.createElement('div');
+            clickOverlay.id = "absolute-touch-catcher";
+            clickOverlay.className = "fixed inset-0 w-screen h-screen bg-transparent z-[999999] cursor-pointer touch-none";
+            document.getElementById('app-container').appendChild(clickOverlay);
+
+            const handleUserRevealClick = (e) => {
+                if (e) { e.preventDefault(); e.stopPropagation(); }
+                if (animationStarted) return;
+                
+                userClickedReveal = true; 
+                if (forcedCardName) {
+                    if (myPlayerIndex && db && baseRoom) db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
+                    clickOverlay.remove();
+                    animationStarted = true;
+                    executeReveal();
+                } else {
+                    if (navigator.vibrate) navigator.vibrate(20); 
+                }
+            };
+
+            setTimeout(() => {
+                clickOverlay.addEventListener('click', handleUserRevealClick);
+                clickOverlay.addEventListener('touchstart', handleUserRevealClick);
+            }, 350);
+        }
+
+        function executeReveal() {
+            const imagePath = getBicycleImagePath(forcedCardName);
+            startRevealAnimation(imagePath);
+        }
+
+        function getBicycleImagePath(cardName) {
+            const basePath = "./cards/";
+            if (cardName === "Joker") return `${basePath}joker_black.png`;
+            let rank = cardName.slice(0, -1); let suitSign = cardName.slice(-1);
+            let suitMap = { '♣': 'club', '♦': 'diamond', '♥': 'heart', '♠': 'spade' };
+            let rankMap = { 'A': '1', 'J': 'jack', 'Q': 'queen', 'K': 'king' };
+            let point = rankMap[rank] ? rankMap[rank] : rank;
+            return `${basePath}${suitMap[suitSign]}_${point}.png`.toLowerCase();
+        }
+
+        function startRevealAnimation(imagePath) {
+            const textureLoader = new THREE.TextureLoader();
+            textureLoader.load(imagePath, (texture) => {
+                if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
+                cardMaterial.map = texture; cardMaterial.needsUpdate = true;
+                let opacityVal = 0;
+                const fadeInterval = setInterval(() => {
+                    opacityVal += 0.02; 
+                    if (opacityVal >= 1.0) {
+                        opacityVal = 1.0; clearInterval(fadeInterval);
+                        bakeScreenToSaveableImage();
+                    }
+                    cardMaterial.opacity = opacityVal;
+                }, 30); 
+            }, undefined, (err) => {
+                console.error("撲克牌貼圖加載失敗，路徑檢測：", imagePath, err);
+            });
+        }
+
+        function bakeScreenToSaveableImage() {
+            animationComplete = true; 
+            const video = document.querySelector('#robot-camera-view-container video');
+            const webglCanvas = document.querySelector('#robot-camera-view-container canvas');
+            if (!video || !webglCanvas) return;
+
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = webglCanvas.width; finalCanvas.height = webglCanvas.height;
+            const ctx = finalCanvas.getContext('2d');
+
+            if (chosenFacingMode === 'user') {
+                ctx.translate(finalCanvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+
+            const videoRatio = video.videoWidth / video.videoHeight;
+            const canvasRatio = finalCanvas.width / finalCanvas.height;
+            let sw, sh, sx, sy;
+            if (videoRatio > canvasRatio) {
+                sh = video.videoHeight; sw = sh * canvasRatio; sx = (video.videoWidth - sw) / 2; sy = 0;
+            } else {
+                sw = video.videoWidth; sh = sw / canvasRatio; sx = 0; sy = (video.videoHeight - sh) / 2;
+            }
+            ctx.drawImage(video, sx, sy, sw, sh, 0, 0, finalCanvas.width, finalCanvas.height);
+
+            if (mindarThree && window.currentStaticCamera) { 
+                mindarThree.renderer.render(scene, window.currentStaticCamera); 
+            }
+            ctx.drawImage(webglCanvas, 0, 0, finalCanvas.width, finalCanvas.height);
+
+            const dataUrl = finalCanvas.toDataURL('image/jpeg', 0.95);
+            const resultImg = document.createElement('img');
+            resultImg.src = dataUrl; resultImg.className = 'saveable-magic-photo';
+            document.getElementById('app-container').appendChild(resultImg);
+
+            localStorage.removeItem('magic_frozen_room');
+            localStorage.removeItem('magic_frozen_index');
+
+            if (mindarThree) {
+                mindarThree.stop();
+                const container = document.getElementById('robot-camera-view-container');
+                if (container) container.innerHTML = '';
+            }
+        }
+
+        // 啟動授權驗證與路由分流
+        bootstrapFrozenProof();
+    </script>
+</body>
+</html>

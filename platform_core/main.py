@@ -19,6 +19,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(CURRENT_DIR)
 XRAY_DIR = os.path.join(ROOT_DIR, "magic_xray_liff")
 KEYCARD_DIR = os.path.join(ROOT_DIR, "keycard")
+FROZEN_DIR = os.path.join(ROOT_DIR, "theFrozenProofMindAR")
 
 sys.path.insert(0, CURRENT_DIR)
 sys.path.insert(1, ROOT_DIR)
@@ -49,6 +50,8 @@ app.mount("/tricks/xray", StaticFiles(directory=XRAY_STATIC_DIR), name="trick_xr
 app.mount("/static", StaticFiles(directory=XRAY_STATIC_DIR), name="legacy_static") # 兼容舊路徑
 if os.path.exists(KEYCARD_DIR):
     app.mount("/tricks/keycard", StaticFiles(directory=KEYCARD_DIR, html=True), name="trick_keycard")
+if os.path.exists(FROZEN_DIR):
+    app.mount("/tricks/frozen", StaticFiles(directory=FROZEN_DIR, html=True), name="trick_frozen")
 
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -103,6 +106,8 @@ async def liff_router(trick: str = "xray_card", mid: str = "", uid: str = "", to
     """
     if trick == "keycard_ar":
         target = f"/tricks/keycard/index.html?mid={mid}&token={token}"
+    elif trick == "frozen_proof_ar":
+        target = f"/tricks/frozen/index.html?mode=master&mid={mid}&token={token}"
     else:
         target = f"/tricks/xray/magic.html?mid={mid}&uid={uid}&token={token}"
     return RedirectResponse(url=target)
@@ -402,6 +407,43 @@ def handle_text_message(event):
                         messages=[
                             FlexMessage(alt_text="數位透視眼 AR 已授權", contents=FlexContainer.from_dict(flex_keycard)),
                             TextMessage(text=f"🔗 數位透視眼直連網址：\n{launch_url}", quick_reply=quick_reply)
+                        ]
+                    )
+                )
+            return
+
+        elif trick_id == "frozen_proof_ar":
+            launch_url = f"{BASE_URL}/tricks/frozen/index.html?mode=master&mid={user_id}&token={token}&openExternalBrowser=1"
+            flex_frozen = {
+                "type": "bubble",
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {"type": "text", "text": "🕯️ 記憶流痕 AR 已授權！", "weight": "bold", "size": "lg", "color": "#a855f7"},
+                        {"type": "text", "text": "已簽發今日 Master 主控權限。進入後可生成觀眾掃描 QR Code，輕觸螢幕即可進入隱形黑屏 12 點鐘手勢秘密選牌！", "size": "xs", "color": "#666666", "margin": "md", "wrap": True}
+                    ]
+                },
+                "footer": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "button",
+                            "style": "primary",
+                            "color": "#a855f7",
+                            "action": {"type": "uri", "label": "🕯️ 啟動記憶流痕主控台", "uri": launch_url}
+                        }
+                    ]
+                }
+            }
+            with ApiClient(configuration) as api_client:
+                MessagingApi(api_client).reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[
+                            FlexMessage(alt_text="記憶流痕 AR 已授權", contents=FlexContainer.from_dict(flex_frozen)),
+                            TextMessage(text=f"🔗 記憶流痕主控台網址：\n{launch_url}", quick_reply=quick_reply)
                         ]
                     )
                 )
