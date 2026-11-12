@@ -22,6 +22,7 @@ KEYCARD_DIR = os.path.join(ROOT_DIR, "keycard")
 FROZEN_DIR = os.path.join(ROOT_DIR, "theFrozenProofMindAR")
 DRAWCARDS_DIR = os.path.join(ROOT_DIR, "drawcards")
 DRAWACARD_DIR = os.path.join(ROOT_DIR, "drawacard")
+PICKONECARDS_DIR = os.path.join(ROOT_DIR, "pickonecards")
 
 sys.path.insert(0, CURRENT_DIR)
 sys.path.insert(1, ROOT_DIR)
@@ -58,6 +59,8 @@ if os.path.exists(DRAWCARDS_DIR):
     app.mount("/tricks/drawcards", StaticFiles(directory=DRAWCARDS_DIR, html=True), name="trick_drawcards")
 if os.path.exists(DRAWACARD_DIR):
     app.mount("/tricks/drawacard", StaticFiles(directory=DRAWACARD_DIR, html=True), name="trick_drawacard")
+if os.path.exists(PICKONECARDS_DIR):
+    app.mount("/tricks/pickonecards", StaticFiles(directory=PICKONECARDS_DIR, html=True), name="trick_pickonecards")
 
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -148,6 +151,8 @@ async def liff_router(trick: str = "xray_card", mid: str = "", uid: str = "", to
         target = f"/tricks/drawcards/index.html?mid={mid}&token={token}"
     elif trick == "drawacard":
         target = f"/tricks/drawacard/index.html?mid={mid}&token={token}"
+    elif trick == "pickonecards":
+        target = f"/tricks/pickonecards/index.html?mid={mid}&token={token}"
     else:
         target = f"/tricks/xray/magic.html?mid={mid}&uid={uid}&token={token}"
     return RedirectResponse(url=target)
@@ -511,6 +516,40 @@ def handle_text_message(event):
                 [
                     create_flex_msg("畫魔術師已授權", flex_drawacard),
                     create_text_msg(f"🔗 畫魔術師直連網址：\n{launch_url}", quick_reply=quick_reply)
+                ]
+            )
+            return
+
+        elif trick_id == "pickonecards":
+            launch_url = f"{BASE_URL}/tricks/pickonecards/index.html?mid={user_id}&token={token}"
+            flex_pickonecards = {
+                "type": "bubble",
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {"type": "text", "text": "🃏 手機迫牌(多人版)已授權！", "weight": "bold", "size": "lg", "color": "#e11d48"},
+                        {"type": "text", "text": "讓觀眾掃描房號 QR Code 即時同步，第一位預設依日期運算（長按右下角可喚醒 4x13 矩陣自訂首張迫牌），多位觀眾各自停牌皆精準命中！", "size": "xs", "color": "#666666", "margin": "md", "wrap": True}
+                    ]
+                },
+                "footer": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "button",
+                            "style": "primary",
+                            "color": "#e11d48",
+                            "action": {"type": "uri", "label": "🃏 啟動手機迫牌(多人版)", "uri": launch_url}
+                        }
+                    ]
+                }
+            }
+            send_reply(
+                event.reply_token,
+                [
+                    create_flex_msg("手機迫牌(多人版)已授權", flex_pickonecards),
+                    create_text_msg(f"🔗 手機迫牌(多人版)直連網址：\n{launch_url}", quick_reply=quick_reply)
                 ]
             )
             return

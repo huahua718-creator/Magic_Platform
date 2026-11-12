@@ -76,5 +76,15 @@ TRICK_REGISTRY = {
         "tier": "pro",
         "free_trial_daily": 0,
         "color": "#10b981"
+    },
+    "pickonecards": {
+        "id": "pickonecards",
+        "name": "手機迫牌 (多人版)",
+        "short_name": "手機迫牌多人版",
+        "subtitle": "QR 連線多人同步迫牌 + 日期演算順延 + 長按隱密 4x13 滑動改牌",
+        "entry_path": "/tricks/pickonecards/index.html",
+        "tier": "pro",
+        "free_trial_daily": 0,
+        "color": "#e11d48"
     }
 }

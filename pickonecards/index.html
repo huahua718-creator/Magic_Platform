@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- Safari Web App iOS 專用優化標籤 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ThePrediction">
+    
+    <title>The Prediction</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide 圖標 -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- QRCode.js (本地產生二維碼，不依賴外部慢速 API) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <!-- Firebase App & Firestore 實時同步 CDN (SDK v11.6.1) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        window.firebase_imports = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection, runTransaction };
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800;900&family=Noto+Sans+TC:wght@300;400;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: radial-gradient(circle at center, #110512 0%, #020104 100%);
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .magic-title {
+            font-family: 'Cinzel', serif;
+        }
+
+        .card-pulse {
+            animation: pulse-border 3s infinite;
+        }
+
+        @keyframes pulse-border {
+            0%, 100% { box-shadow: 0 0 12px rgba(239, 68, 68, 0.1); }
+            50% { box-shadow: 0 0 25px rgba(239, 68, 68, 0.25); }
+        }
+
+        /* 瞬停時的黃金與紫紅衝擊波特效 */
+        .impact-ring {
+            position: absolute;
+            border: 5px solid rgba(245, 158, 11, 0.85);
+            border-radius: 1rem;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0;
+            z-index: 20;
+        }
+
+        .animate-impact {
+            animation: impact-shimmer 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes impact-shimmer {
+            0% {
+                transform: scale(0.95);
+                opacity: 1;
+                border-color: rgba(245, 158, 11, 0.9);
+            }
+            100% {
+                transform: scale(1.15);
+                opacity: 0;
+                border-color: rgba(239, 68, 68, 0);
+            }
+        }
+
+        /* QR Code 容器圓角修正 */
+        #qrcode img {
+            border-radius: 0.75rem;
+            margin: 0 auto;
+        }
+
+        /* 背景保溫庫，強迫 Safari 提前渲染避免解碼閃動 */
+        #gpu-card-vault {
+            position: absolute;
+            left: -9999px;
+            top: -9999px;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            opacity: 0.01;
+        }
+
+        /* 4x13 選牌矩陣客製化樣式 */
+        .card-option {
+            transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .card-option.active-highlight {
+            background-color: rgba(139, 92, 246, 0.9) !important;
+            border-color: rgb(245, 158, 11) !important;
+            box-shadow: 0 0 15px rgba(245, 158, 11, 0.8);
+            transform: scale(1.18);
+            z-index: 50;
+        }
+    </style>
+</head>
+<body id="interactive-screen" class="min-h-screen text-gray-100 flex flex-col justify-center items-center p-6 select-none relative cursor-pointer">
+
+    <!-- ================================================================= -->
+    <!-- 流程 1：魔術師房間配對階段 (起始即顯現的 QR Code 畫面) -->
+    <!-- ================================================================= -->
+    <div id="magician-pairing-panel" class="w-full max-w-sm flex flex-col items-center bg-neutral-900/40 border border-white/5 rounded-3xl p-6 backdrop-blur-md hidden z-30">
+        <h2 class="text-amber-500 font-bold tracking-widest text-lg magic-title mb-4 text-center">CONNECTING REALMS</h2>
+        
+        <!-- 二維碼產生地 -->
+        <div class="bg-white p-3 rounded-2xl shadow-2xl mb-4 flex items-center justify-center min-w-[224px] min-h-[224px]">
+            <div id="qrcode" class="flex flex-col items-center justify-center text-neutral-900 text-xs font-bold tracking-widest gap-2">
+                <i data-lucide="loader-2" class="w-6 h-6 animate-spin text-amber-600"></i>
+                喚醒傳送門中...
+            </div>
+        </div>
+
+        <p class="text-xs text-neutral-400 tracking-wider mb-6 text-center leading-relaxed">
+            請讓觀眾掃描上方 QR Code 加入房間。<br>
+            當前已連線人數：<span id="magician-online-count" class="text-amber-400 font-bold font-mono text-base">0</span> 人
+        </p>
+
+        <button id="close-pairing-btn" class="w-full py-3 bg-gradient-to-r from-red-700 to-rose-950 text-white font-bold text-sm rounded-xl tracking-widest magic-title transition-all active:scale-95">
+            收起 QR CODE
+        </button>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- 流程 3：觀眾開場引導階段 -->
+    <!-- ================================================================= -->
+    <div id="audience-intro-panel" class="w-full max-w-xs flex flex-col items-center text-center bg-neutral-900/30 border border-white/5 rounded-3xl p-6 backdrop-blur-md hidden z-30">
+        <div class="w-16 h-16 rounded-full border border-red-800/40 flex items-center justify-center mb-6">
+            <i data-lucide="scan-face" class="w-8 h-8 text-red-600 animate-pulse"></i>
+        </div>
+        
+        <h3 id="audience-welcome-text" class="text-base text-gray-300 leading-relaxed mb-6 font-semibold">
+            請點擊準備開始。
+        </h3>
+
+        <button id="audience-ready-btn" class="w-full py-3 bg-gradient-to-b from-red-600 to-rose-800 text-white font-bold text-sm rounded-xl tracking-widest magic-title transition-all active:scale-95">
+            準備開始
+        </button>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- 核心卡牌展示主舞台 -->
+    <!-- ================================================================= -->
+    <main id="magic-stage" class="flex flex-col items-center justify-center w-full max-w-sm hidden">
+
+        <div id="click-trigger-area" class="relative flex flex-col items-center justify-center pointer-events-none">
+            
+            <!-- 卡牌後方的霓虹光暈 -->
+            <div id="card-glow" class="absolute w-72 h-[380px] bg-red-600/5 rounded-2xl blur-3xl transition-all duration-1000 opacity-50"></div>
+
+            <!-- 卡牌外框容器 (黃金比例 1:1.40) - 內部已徹底移除任何 M 記號，絕無破綻 -->
+            <div id="card-outer" class="relative w-64 h-[358px] bg-neutral-950/90 border border-white/10 rounded-2xl card-pulse flex items-center justify-center transition-all duration-300 overflow-hidden">
+                
+                <!-- 內層雙槽卡牌滑動通道 -->
+                <div id="card-content" class="w-full h-full relative rounded-2xl overflow-hidden will-change-transform bg-transparent">
+                    
+                    <!-- 卡牌槽 A (目前展示中) -->
+                    <div id="slot-active" class="absolute inset-0 w-full h-full flex items-center justify-center translate-x-0 will-change-transform p-0">
+                        <!-- 預設開場 Ready 卡背樣式 -->
+                        <div id="default-card-ui" class="w-full h-full flex flex-col items-center justify-center border-[3px] border-red-950/80 rounded-2xl bg-gradient-to-b from-neutral-950 via-red-950 to-neutral-950 p-4 relative overflow-hidden shadow-2xl">
+                            <div class="absolute inset-0 opacity-15 bg-[radial-gradient(#ff0000_1px,transparent_1px)] [background-size:12px_12px]"></div>
+                            
+                            <div class="w-16 h-16 rounded-full border border-red-800/40 flex items-center justify-center mb-6 relative">
+                                <div class="absolute inset-1 rounded-full border border-dashed border-red-700/30 animate-spin" style="animation-duration: 25s;"></div>
+                                <i data-lucide="eye" class="w-6 h-6 text-red-900 animate-pulse"></i>
+                            </div>
+
+                            <h2 id="stage-card-title" class="text-red-500 font-bold tracking-widest text-lg magic-title mb-1">The Prediction</h2>
+                            <p id="preloader-status-text" class="text-neutral-500 text-[9px] tracking-widest uppercase">tap to start</p>
+                        </div>
+                    </div>
+
+                    <!-- 卡牌槽 B (準備滑入中) -->
+                    <div id="slot-incoming" class="absolute inset-0 w-full h-full flex items-center justify-center translate-x-full will-change-transform p-0">
+                    </div>
+
+                </div>
+
+                <!-- 衝擊波擴散特效層 -->
+                <div id="impact-wave" class="impact-ring"></div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- ================= 畫面最左上角：極隱密微弱 M 狀態標記 (隨機模式顯示，迫牌模式完全移除) ================= -->
+    <div id="magician-indicator" class="absolute top-4 left-4 text-[11px] font-mono text-neutral-600/25 select-none hidden z-50 pointer-events-none">M</div>
+
+    <!-- ================= 流程 5：右下角極隱密長按切換與選牌熱區 (z-[100] 保證最高點擊層級) ================= -->
+    <div id="magic-hotspot" class="absolute bottom-0 right-0 w-24 h-24 opacity-0 z-[100] cursor-default select-none touch-action-none"></div>
+
+    <!-- ================= 秘密一體化 4x13 滑動選牌矩陣選單 (位於畫面最底部，方便大拇指操作) ================= -->
+    <div id="card-matrix-overlay" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex flex-col items-center justify-end pb-12 hidden pointer-events-none touch-action-none select-none">
+        <div class="w-full max-w-2xl px-4 text-center pointer-events-auto">
+            <h3 class="text-amber-500 font-black tracking-widest text-lg mb-1 magic-title">CARD SELECTION MATRIX</h3>
+            <p id="matrix-preview-text" class="text-sm font-semibold text-neutral-400 mb-6 tracking-wider">
+                請按住並滑動手指選擇迫牌
+            </p>
+            
+            <!-- 13列 4行 響應式原生 Grid 網格 -->
+            <div id="matrix-grid" class="grid gap-1 md:gap-1.5 w-full bg-neutral-950/80 p-3 rounded-2xl border border-neutral-800" style="grid-template-columns: repeat(13, minmax(0, 1fr));">
+                <!-- 由 JS 動態生成 52 張牌 -->
+            </div>
+            
+            <p class="text-[10px] text-neutral-500 mt-4 tracking-widest">
+                * 提示：手指不離螢幕直接拖曳，於目標牌上放開即可鎖定
+            </p>
+        </div>
+    </div>
+
+    <!-- 背景解碼保溫庫 -->
+    <div id="gpu-card-vault"></div>
+
+    <!-- ================================================================= -->
+    <!-- 核心魔術連線與控制 JavaScript -->
+    <!-- ================================================================= -->
+    <script type="module">
+        const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection, runTransaction } = window.firebase_imports;
+
+        const suits = [
+            { code: 'H', char: '♥', color: 'text-red-500', engName: 'heart', isRed: true },
+            { code: 'S', char: '♠', color: 'text-neutral-300', engName: 'spade', isRed: false },
+            { code: 'D', char: '♦', color: 'text-red-500', engName: 'diamond', isRed: true },
+            { code: 'C', char: '♣', color: 'text-neutral-400', engName: 'club', isRed: false }
+        ];
+        const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+        const imageCache = {};
+
+        // 魔術狀態機 (預設 magicianForceMode = false ➔ 隨機展示模式)
+        let state = {
+            role: 'solo', 
+            roomId: '',
+            userId: '',
+            userOrder: 0, 
+            status: 'idle', // 'idle' (等待點擊), 'flashing' (滾動中), 'finished' (定格), 'locked' (觀眾永久鎖死)
+            normalSpeed: 220, 
+            customFirstCard: null, // 魔術師自訂第一張牌 (若為空則執行當天日期/月份演算規則)
+            forceCard: null, 
+            magicianForceMode: false, // 預設先進入隨機展示模式
+            magicianForceIndex: 1, 
+            flashTimeout: null,
+            currentDisplayCard: null,
+            stopping: false,
+            isTransitioning: false,
+            deck: []
+        };
+
+        const appId = 'default-magic-id';
+        
+        // --- 核心：直連並綁定您的 Firebase Config 帳號 ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDx2VEGJJCEs_OcZELIU9woRdo3EfZoe6M",
+            authDomain: "pickonecard.firebaseapp.com",
+            databaseURL: "https://pickonecard-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "pickonecard",
+            storageBucket: "pickonecard.firebasestorage.app",
+            messagingSenderId: "785899084675",
+            appId: "1:785899084675:web:07ffef15649f52ecc774b6",
+            measurementId: "G-8CPBR4RC9G"
+        };
+
+        let app, auth, db, firebaseEnabled = false;
+
+        if (firebaseConfig && firebaseConfig.apiKey) {
+            try {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                firebaseEnabled = true;
+            } catch (e) {
+                console.error("Firebase 初始化失敗，將以離線安全單人版運行:", e);
+            }
+        }
+
+        // --- DOM 節點 ---
+        const magicianPairingPanel = document.getElementById('magician-pairing-panel');
+        const magicianOnlineCount = document.getElementById('magician-online-count');
+        const closePairingBtn = document.getElementById('close-pairing-btn');
+        const audienceIntroPanel = document.getElementById('audience-intro-panel');
+        const audienceReadyBtn = document.getElementById('audience-ready-btn');
+        const magicStage = document.getElementById('magic-stage');
+        
+        const cardOuter = document.getElementById('card-outer');
+        const slotActive = document.getElementById('slot-active');
+        const slotIncoming = document.getElementById('slot-incoming');
+        const defaultCardUi = document.getElementById('default-card-ui');
+        const cardGlow = document.getElementById('card-glow');
+        const impactWave = document.getElementById('impact-wave');
+        const interactiveScreen = document.getElementById('interactive-screen');
+        const preloaderStatusText = document.getElementById('preloader-status-text');
+
+        const magicHotspot = document.getElementById('magic-hotspot');
+        const gpuCardVault = document.getElementById('gpu-card-vault');
+        const magicianIndicator = document.getElementById('magician-indicator');
+
+        // 4x13 選牌矩陣專屬 DOM
+        const cardMatrixOverlay = document.getElementById('card-matrix-overlay');
+        const matrixGrid = document.getElementById('matrix-grid');
+        const matrixPreviewText = document.getElementById('matrix-preview-text');
+
+        // 先行判斷身份參數（待 SaaS 授權驗證通過後再顯示對應畫面）
+        let appBootstrapped = false;
+        const urlParams = new URLSearchParams(window.location.search);
+        const hasRoomParam = urlParams.get('room');
+
+        // --- 震動回饋 ---
+        function playTick() {
+            try { if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(8); } catch(e){}
+        }
+        function playHeavyTick() {
+            try { if (window.navigator && window.navigator.vibrate) window.navigator.vibrate([25, 35, 10]); } catch(e){}
+        }
+
+        function updateMagicianModeIndicator() {
+            if (!magicianIndicator) return;
+            if (state.role === 'magician' || state.role === 'solo') {
+                if (state.magicianForceMode) {
+                    magicianIndicator.classList.add('hidden'); // 迫牌模式：完全移除灰色 M 記號
+                } else {
+                    magicianIndicator.classList.remove('hidden'); // 隨機模式：畫面最左上角微弱灰色 M
+                    magicianIndicator.style.opacity = "0.22"; 
+                    magicianIndicator.style.color = "#525252";
+                }
+            } else {
+                magicianIndicator.classList.add('hidden'); 
+            }
+        }
+
+        function generateCardSVG(suitCode, valueStr) {
+            const suitObj = suits.find(s => s.code === suitCode);
+            const suitChar = suitObj.char;
+            const isRed = suitObj.isRed;
+            const colorClass = isRed ? '#dc2626' : '#171717';
+            
+            let centerGraphics = '';
+            if (['J', 'Q', 'K'].includes(valueStr)) {
+                const faceColor = isRed ? '#fef2f2' : '#f5f5f5';
+                const crownColor = '#d97706';
+                centerGraphics = `
+                    <rect x="45" y="65" width="110" height="150" rx="6" fill="none" stroke="${colorClass}" stroke-width="2" stroke-dasharray="3 3"/>
+                    <circle cx="100" cy="130" r="32" fill="${faceColor}" stroke="${colorClass}" stroke-width="2"/>
+                    <path d="M 85 112 L 90 122 L 100 112 L 110 122 L 115 112 L 112 130 L 88 130 Z" fill="${crownColor}"/>
+                    <text x="100" y="185" font-size="28" fill="${colorClass}" text-anchor="middle" font-weight="bold">${valueStr}</text>
+                `;
+            } else if (valueStr === 'A') {
+                centerGraphics = `<text x="100" y="165" font-size="75" fill="${colorClass}" text-anchor="middle">${suitChar}</text>`;
+            } else {
+                centerGraphics = `<text x="100" y="160" font-size="52" fill="${colorClass}" text-anchor="middle">${suitChar}</text>`;
+            }
+
+            return `
+                <svg width="100%" height="100%" viewBox="0 0 200 280" xmlns="http://www.w3.org/2000/svg" class="select-none pointer-events-none">
+                    <rect x="2" y="2" width="196" height="276" rx="12" fill="#ffffff" stroke="#e5e7eb" stroke-width="2"/>
+                    <g transform="translate(16, 14)">
+                        <text x="0" y="18" font-size="22" font-weight="900" fill="${colorClass}" text-anchor="middle">${valueStr}</text>
+                        <text x="0" y="34" font-size="15" fill="${colorClass}" text-anchor="middle">${suitChar}</text>
+                    </g>
+                    <g transform="translate(184, 266) rotate(180)">
+                        <text x="0" y="18" font-size="22" font-weight="900" fill="${colorClass}" text-anchor="middle">${suitChar}</text>
+                        <text x="0" y="34" font-size="15" fill="${colorClass}" text-anchor="middle">${suitChar}</text>
+                    </g>
+                    ${centerGraphics}
+                </svg>
+            `;
+        }
+
+        function getCardImagePath(suitCode, valueStr) {
+            const suitObj = suits.find(s => s.code === suitCode);
+            const suitName = suitObj.engName;
+            let valName = valueStr.toLowerCase();
+            if (valName === 'a') valName = '1';
+            if (valName === 'j') valName = 'jack';
+            if (valName === 'q') valName = 'queen';
+            if (valName === 'k') valName = 'king';
+            return `./cards/${suitName}_${valName}.png`;
+        }
+
+        function generateCardImageHTML(suitCode, valueStr) {
+            const key = `${suitCode}_${valueStr}`;
+            const cacheItem = imageCache[key];
+            if (cacheItem && cacheItem.status === 'failed') {
+                return `<div class="w-full h-full bg-white rounded-2xl shadow-lg flex items-center justify-center overflow-hidden">${generateCardSVG(suitCode, valueStr)}</div>`;
+            }
+            const imgSrc = getCardImagePath(suitCode, valueStr);
+            return `<img src="${imgSrc}" alt="${suitCode}${valueStr}" class="w-full h-full object-fill rounded-2xl pointer-events-none select-none" onerror="this.onerror=null; this.outerHTML=generateCardSVG('${suitCode}', '${valueStr}')" />`;
+        }
+
+        function startPreloadingAllCards() {
+            let loadedCount = 0;
+            const totalCards = 52;
+            gpuCardVault.innerHTML = "";
+            suits.forEach(s => {
+                values.forEach(v => {
+                    const key = `${s.code}_${v}`;
+                    const src = getCardImagePath(s.code, v);
+                    const img = new Image();
+                    img.src = src;
+                    img.className = "w-1 h-1 inline-block";
+                    gpuCardVault.appendChild(img);
+                    img.onload = () => { imageCache[key] = { status: 'success', src: src }; checkProgress(); };
+                    img.onerror = () => { imageCache[key] = { status: 'failed' }; checkProgress(); };
+                });
+            });
+            function checkProgress() {
+                loadedCount++;
+                if (loadedCount === totalCards) { preloaderStatusText.innerText = "tap to start"; } 
+                else { preloaderStatusText.innerText = `READY ${Math.floor((loadedCount / totalCards) * 100)}%`; }
+            }
+        }
+
+        function calculateForcedCardByOrder(order, customFirstCard = null) {
+            const today = new Date();
+            const month = today.getMonth() + 1; // 當月
+            const date = today.getDate(); // 當天
+
+            if (order === 1) {
+                // 如果魔術師在 qrcode 或起始卡背畫面自訂了首張迫牌，直接套用
+                if (customFirstCard) {
+                    return customFirstCard;
+                }
+                const revValueMap = { 1:'A', 2:'2', 3:'3', 4:'4', 5:'5', 6:'6', 7:'7', 8:'8', 9:'9', 10:'10', 11:'J', 12:'Q', 13:'K' };
+                const valStr = revValueMap[month] || 'K';
+                const remainder = date % 4;
+                let suitStr = 'S'; // 餘0 ➔ 黑桃
+                if (remainder === 1) suitStr = 'C'; // 餘1 ➔ 梅花
+                else if (remainder === 2) suitStr = 'D'; // 餘2 ➔ 方塊
+                else if (remainder === 3) suitStr = 'H'; // 餘3 ➔ 紅心
+                return { suit: suitStr, value: valStr };
+            }
+
+            const prevCard = calculateForcedCardByOrder(order - 1, customFirstCard);
+            const suitCycle = ['S', 'D', 'C', 'H'];
+            const prevSuitIndex = suitCycle.indexOf(prevCard.suit);
+            const nextSuit = suitCycle[(prevSuitIndex + 1) % 4];
+
+            const valueMap = { 'A':1, '2':2, '3':3, '4':4, '5':5, '6':6, '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13 };
+            const revValueMap = { 1:'A', 2:'2', 3:'3', 4:'4', 5:'5', 6:'6', 7:'7', 8:'8', 9:'9', 10:'10', 11:'J', 12:'Q', 13:'K' };
+            let nextValNum = valueMap[prevCard.value] + 5;
+            if (nextValNum > 13) nextValNum -= 13;
+            return { suit: nextSuit, value: revValueMap[nextValNum] };
+        }
+
+        function initAndShuffleDeck() {
+            state.deck = [];
+            suits.forEach(s => {
+                values.forEach(v => {
+                    if (state.forceCard && s.code === state.forceCard.suit && v === state.forceCard.value) return;
+                    state.deck.push({ suit: s.code, value: v });
+                });
+            });
+            for (let i = state.deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [state.deck[i], state.deck[j]] = [state.deck[j], state.deck[i]];
+            }
+        }
+
+        function drawNextCard() {
+            if (state.deck.length === 0) initAndShuffleDeck();
+            return state.deck.pop();
+        }
+
+        function slideToNext(nextCardData, isFinal = false) {
+            if (state.isTransitioning) return;
+            state.isTransitioning = true;
+
+            slotIncoming.innerHTML = generateCardImageHTML(nextCardData.suit, nextCardData.value);
+            const slideTime = Math.floor(state.normalSpeed * 0.85);
+            const easeCurve = isFinal ? 'cubic-bezier(0.16, 1, 0.3, 1)' : 'cubic-bezier(0.25, 1, 0.5, 1)';
+
+            slotActive.style.transition = `transform ${slideTime}ms ${easeCurve}`;
+            slotIncoming.style.transition = `transform ${slideTime}ms ${easeCurve}`;
+            slotActive.offsetHeight; 
+            slotActive.style.transform = 'translate3d(-100%, 0, 0)';
+            slotIncoming.style.transform = 'translate3d(0, 0, 0)';
+
+            if (!isFinal) playTick();
+
+            setTimeout(() => {
+                slotActive.innerHTML = slotIncoming.innerHTML;
+                slotActive.style.transition = 'none';
+                slotIncoming.style.transition = 'none';
+                slotActive.style.transform = 'translate3d(0, 0, 0)';
+                slotIncoming.style.transform = 'translate3d(100%, 0, 0)';
+                state.currentDisplayCard = nextCardData;
+                state.isTransitioning = false;
+            }, slideTime);
+        }
+
+        function runFlashLoop() {
+            if (state.status !== 'flashing') return;
+
+            if (state.stopping) {
+                const isForced = (state.role === 'audience') || (state.role === 'magician' && state.magicianForceMode);
+                if (isForced) { 
+                    slideToNext(state.forceCard, true); 
+                } else { 
+                    slideToNext(drawNextCard(), true); 
+                }
+                
+                setTimeout(() => { finalizeMagicStop(); }, Math.floor(state.normalSpeed * 0.85) + 20);
+                return;
+            }
+
+            slideToNext(drawNextCard(), false);
+            state.flashTimeout = setTimeout(runFlashLoop, state.normalSpeed);
+        }
+
+        function startFlashing() {
+            state.status = 'flashing';
+            state.stopping = false;
+            state.isTransitioning = false;
+            initAndShuffleDeck();
+            
+            defaultCardUi.classList.add('hidden');
+            cardOuter.classList.add('scale-105');
+            cardGlow.className = "absolute w-72 h-[380px] bg-red-500/20 rounded-2xl blur-3xl opacity-100 transition-all duration-300";
+
+            const startCard = drawNextCard();
+            slotActive.innerHTML = generateCardImageHTML(startCard.suit, startCard.value);
+            state.currentDisplayCard = startCard;
+            state.flashTimeout = setTimeout(runFlashLoop, state.normalSpeed);
+        }
+
+        function triggerInstantStop() {
+            if (state.status !== 'flashing' || state.stopping) return;
+            state.stopping = true;
+        }
+
+        function finalizeMagicStop() {
+            state.status = 'finished';
+            clearTimeout(state.flashTimeout);
+            playHeavyTick();
+            cardOuter.classList.remove('scale-105');
+            
+            impactWave.classList.remove('animate-impact');
+            void impactWave.offsetWidth; 
+            impactWave.classList.add('animate-impact');
+
+            const isForcedStop = (state.role === 'audience') || (state.role === 'magician' && state.magicianForceMode);
+            if (isForcedStop) {
+                cardGlow.className = "absolute w-72 h-[380px] bg-amber-500/35 rounded-2xl blur-3xl opacity-100 transition-all duration-300";
+                cardOuter.classList.add('border-amber-500/35');
+            } else {
+                cardGlow.className = "absolute w-72 h-[380px] bg-red-600/15 rounded-2xl blur-3xl opacity-100 transition-all duration-3000";
+            }
+
+            // 流程 4：觀眾點擊停牌之後，直接永久鎖定螢幕，無法再次點擊
+            if (state.role === 'audience') {
+                state.status = 'locked'; 
+            }
+        }
+
+        // 階段控制與連鎖輪遞
+        function proceedToNextFlashing() {
+            if (state.role === 'magician' && state.magicianForceMode) {
+                state.magicianForceIndex++;
+                state.forceCard = calculateForcedCardByOrder(state.magicianForceIndex, state.customFirstCard);
+            }
+            state.status = 'idle';
+            state.stopping = false;
+            state.isTransitioning = false;
+            
+            // 流程 2：不需要重置回 Ready 牌背，直接再度啟動快速滾動！
+            startFlashing();
+        }
+
+        // 全螢幕點擊控制器
+        function handleGlobalInteraction() {
+            if (!appBootstrapped || state.status === 'locked') return; 
+
+            if (state.status === 'idle') {
+                startFlashing(); // 點擊：開始滾動撲克牌
+            } else if (state.status === 'flashing') {
+                triggerInstantStop(); // 再次點擊：停牌 (隨機或指定迫牌)
+            } else if (state.status === 'finished') {
+                proceedToNextFlashing(); 
+            }
+        }
+
+        interactiveScreen.addEventListener('click', () => {
+            handleGlobalInteraction();
+        });
+
+        // ================================================================= -->
+        // 🔮 Firebase Firestore 多人即時配對同步 🔮
+        // ================================================================= -->
+        async function setupRoomConnections() {
+            if (!firebaseEnabled) {
+                state.role = 'solo';
+                state.forceCard = calculateForcedCardByOrder(1);
+                magicHotspot.classList.remove('hidden'); 
+                startPreloadingAllCards();
+                updateMagicianModeIndicator();
+                return;
+            }
+
+            if (!auth.currentUser) return;
+
+            const rId = urlParams.get('room');
+
+            if (rId) {
+                // =============== 觀眾端 (Audience Mode) ===============
+                state.role = 'audience';
+                state.roomId = rId;
+                magicHotspot.classList.add('hidden');
+
+                const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', state.roomId);
+                
+                try {
+                    await runTransaction(db, async (transaction) => {
+                        const roomDoc = await transaction.get(roomRef);
+                        if (!roomDoc.exists()) { alert("房間不存在或已解散。"); return; }
+
+                        let members = roomDoc.data().members || {};
+                        if (!members[state.userId]) {
+                            const orderIndex = Object.keys(members).length + 1;
+                            members[state.userId] = { order: orderIndex, joinedAt: Date.now() };
+                            transaction.update(roomRef, { members: members });
+                            state.userOrder = orderIndex;
+                        } else {
+                            state.userOrder = members[state.userId].order;
+                        }
+                    });
+
+                    // 綁定指定迫牌，並監聽來自魔術師的自訂強迫牌（Real-time Sync）
+                    state.forceCard = calculateForcedCardByOrder(state.userOrder, state.customFirstCard);
+                    audienceIntroPanel.classList.remove('hidden');
+
+                } catch (e) { 
+                    console.error("加入房間失敗:", e); 
+                }
+
+                onSnapshot(roomRef, (snapshot) => {
+                    if (snapshot.exists()) {
+                        const roomData = snapshot.data();
+                        // 如果魔術師在雲端設定了自訂首張迫牌，即時同步更新
+                        state.customFirstCard = roomData.customFirstCard || null;
+                        state.forceCard = calculateForcedCardByOrder(state.userOrder, state.customFirstCard);
+                    } else {
+                        resetApp();
+                        alert("房間已結束。");
+                    }
+                });
+
+            } else {
+                // =============== 魔術師端 (Magician Mode) ===============
+                state.role = 'magician';
+                state.roomId = 'R-' + Math.floor(1000 + Math.random() * 9000); 
+                state.forceCard = calculateForcedCardByOrder(1);
+                magicHotspot.classList.remove('hidden');
+
+                const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', state.roomId);
+                try {
+                    await setDoc(roomRef, { roomId: state.roomId, magicianId: state.userId, createdAt: Date.now(), members: {} });
+                    const midParam = urlParams.get('mid') || '';
+                    const tokenParam = urlParams.get('token') || '';
+                    const audienceURL = `${window.location.origin}${window.location.pathname}?room=${state.roomId}&mid=${encodeURIComponent(midParam)}&token=${encodeURIComponent(tokenParam)}`;
+                    
+                    document.getElementById('qrcode').innerHTML = ""; 
+                    new QRCode(document.getElementById('qrcode'), {
+                        text: audienceURL,
+                        width: 200,
+                        height: 200,
+                        colorDark: "#171717",
+                        colorLight: "#ffffff",
+                        correctLevel: QRCode.CorrectLevel.H
+                    });
+
+                    onSnapshot(roomRef, (snapshot) => {
+                        if (snapshot.exists()) {
+                            const data = snapshot.data();
+                            const activeCount = Object.keys(data.members || {}).length;
+                            magicianOnlineCount.innerText = activeCount;
+                        }
+                    }, (err) => {
+                        console.error("即時同步人數失敗:", err);
+                    });
+                } catch (e) { 
+                    console.error("建立房間失敗:", e); 
+                }
+            }
+
+            startPreloadingAllCards();
+            updateMagicianModeIndicator();
+        }
+
+        const startApp = async () => {
+            if (firebaseEnabled) {
+                onAuthStateChanged(auth, (user) => {
+                    if (user) { 
+                        state.userId = user.uid; 
+                        setupRoomConnections(); 
+                    } else { 
+                        state.role = 'solo'; 
+                        firebaseEnabled = false; 
+                        setupRoomConnections(); 
+                    }
+                });
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token); return;
+                    }
+                } catch (e) {}
+                try { 
+                    await signInAnonymously(auth); 
+                } catch (e) { 
+                    firebaseEnabled = false; 
+                    state.role = 'solo'; 
+                    setupRoomConnections(); 
+                }
+            } else { 
+                setupRoomConnections(); 
+            }
+        };
+
+        // --- 4x13 滑動選牌矩陣初始化 ---
+        function initCardMatrix() {
+            if (!matrixGrid) return;
+            matrixGrid.innerHTML = '';
+            
+            // 4個行代表 4種花色，每行13張（Spades, Hearts, Diamonds, Clubs）
+            const matrixSuits = [
+                { code: 'S', char: '♠', color: 'text-neutral-400' }, // 黑桃 
+                { code: 'H', char: '♥', color: 'text-red-500' },     // 紅心
+                { code: 'D', char: '♦', color: 'text-red-500' },     // 方塊/紅磚
+                { code: 'C', char: '♣', color: 'text-neutral-400' }  // 梅花
+            ];
+            const matrixValues = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+            matrixSuits.forEach(suit => {
+                matrixValues.forEach(val => {
+                    const opt = document.createElement('div');
+                    opt.className = "card-option flex flex-col items-center justify-center bg-neutral-900 border border-neutral-800 rounded-md p-1 md:p-1.5 text-center select-none touch-action-none pointer-events-auto cursor-pointer";
+                    opt.setAttribute('data-suit', suit.code);
+                    opt.setAttribute('data-value', val);
+
+                    opt.innerHTML = `
+                        <span class="${suit.color} font-black text-xs md:text-sm leading-none pointer-events-none">${suit.char}</span>
+                        <span class="text-neutral-400 font-extrabold text-[9px] md:text-[10px] leading-none mt-0.5 pointer-events-none">${val}</span>
+                    `;
+                    matrixGrid.appendChild(opt);
+                });
+            });
+        }
+
+        // SaaS 訂閱驗證與應用程式啟動器
+        async function bootstrapPickOneCards() {
+            const midParam = urlParams.get('mid') || '';
+            const tokenParam = urlParams.get('token') || '';
+            try {
+                const verifyRes = await fetch(`/api/auth/verify?trick=pickonecards&mid=${encodeURIComponent(midParam)}&token=${encodeURIComponent(tokenParam)}`);
+                if (verifyRes.ok) {
+                    const data = await verifyRes.json();
+                    if (!data.authorized) {
+                        document.body.innerHTML = `
+                            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;width:100vw;padding:24px;text-align:center;background:#0a030b;color:#fff;">
+                                <div style="font-size:48px;margin-bottom:16px;">🔒</div>
+                                <h2 style="color:#e11d48;margin:0 0 12px 0;font-size:20px;font-weight:bold;">未經授權的存取</h2>
+                                <p style="color:#9ca3af;font-size:14px;max-width:300px;line-height:1.6;">${data.message || '「手機迫牌(多人版)」為訂閱會員專屬魔術道具，請從認證官方帳號選單開啟！'}</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.log("Standalone preview");
+            }
+
+            appBootstrapped = true;
+            if (!hasRoomParam) {
+                magicianPairingPanel.classList.remove('hidden');
+            }
+            initCardMatrix();
+            startApp();
+        }
+
+        // 開始加載
+        bootstrapPickOneCards();
+
+        // UI 按鍵事件
+        audienceReadyBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            audienceIntroPanel.classList.add('hidden');
+            magicStage.classList.remove('hidden');
+        });
+
+        closePairingBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            magicianPairingPanel.classList.add('hidden');
+            magicStage.classList.remove('hidden');
+            state.status = 'idle';
+        });
+
+        // ================================================================= -->
+        // 🔮 流程 5：魔術師 Pointer-Event 觸控一體化滑動選牌矩陣控制 🔮
+        // ================================================================= -->
+        let matrixTimer = null;
+        let isMatrixSelecting = false;
+        let currentHoveredOption = null;
+
+        function startPress(e) {
+            if (!appBootstrapped) return;
+            cancelPress();
+            
+            // 僅限魔術師/單人模式下才可喚醒
+            if (state.role !== 'magician' && state.role !== 'solo') return;
+
+            // 判斷是否為起始狀態（QR code 還沒收起，或是舞台尚未點開/依然顯示 default Ready 卡背）
+            const isPairingVisible = !magicianPairingPanel.classList.contains('hidden');
+            const isStartingCardBack = !defaultCardUi.classList.contains('hidden');
+            const isStartingState = isPairingVisible || isStartingCardBack;
+
+            matrixTimer = setTimeout(() => {
+                if (isStartingState) {
+                    // 起始狀態長按 ➔ 喚醒 4x13 選牌表格選單
+                    isMatrixSelecting = true;
+                    playHeavyTick();
+                    
+                    cardMatrixOverlay.classList.remove('hidden');
+                    cardMatrixOverlay.classList.add('flex');
+                    
+                    matrixPreviewText.innerText = "請按住並滑動手指選擇迫牌";
+                    matrixPreviewText.className = "text-sm font-semibold text-neutral-400 mb-6 tracking-wider animate-pulse";
+                } else {
+                    // 已開始展示 ➔ 長按只進行「迫牌/隨機模式」無縫切换，絕不干擾畫面與開啟選單
+                    isMatrixSelecting = false;
+                    playHeavyTick();
+                    state.magicianForceMode = !state.magicianForceMode;
+                    if (state.magicianForceMode) {
+                        state.magicianForceIndex = 1; // 迫牌模式重置
+                        state.forceCard = calculateForcedCardByOrder(state.magicianForceIndex, state.customFirstCard);
+                    }
+                    updateMagicianModeIndicator();
+                }
+            }, 250); // 行動端滑動友善 250ms 快觸發
+        }
+
+        function cancelPress() {
+            if (matrixTimer) {
+                clearTimeout(matrixTimer);
+                matrixTimer = null;
+            }
+        }
+
+        // 全域 pointer 拖曳與釋放監聽，極致穩定相容
+        window.addEventListener('pointermove', (e) => {
+            if (!isMatrixSelecting) return;
+            e.preventDefault();
+
+            // 實時利用 elementFromPoint 追蹤指尖正下方的卡牌元素
+            const target = document.elementFromPoint(e.clientX, e.clientY);
+            const cardOption = target ? target.closest('.card-option') : null;
+
+            if (cardOption !== currentHoveredOption) {
+                // 移除舊的 highlight
+                if (currentHoveredOption) {
+                    currentHoveredOption.classList.remove('active-highlight');
+                }
+                
+                // 加入新的 highlight 震動與文字更新
+                if (cardOption) {
+                    cardOption.classList.add('active-highlight');
+                    playTick();
+                    const suitCode = cardOption.getAttribute('data-suit');
+                    const valueStr = cardOption.getAttribute('data-value');
+                    const suitChar = suitCode === 'S' ? '♠' : suitCode === 'H' ? '♥' : suitCode === 'D' ? '♦' : '♣';
+                    const suitName = suitCode === 'S' ? '黑桃' : suitCode === 'H' ? '紅心' : suitCode === 'D' ? '紅磚' : '梅花';
+                    
+                    matrixPreviewText.innerText = `選取中：${suitChar} ${valueStr} (${suitName} ${valueStr})`;
+                    matrixPreviewText.className = "text-sm font-extrabold text-amber-500 mb-6 tracking-widest scale-105 transition-all duration-100";
+                } else {
+                    matrixPreviewText.innerText = "放開將取消選取";
+                    matrixPreviewText.className = "text-sm font-semibold text-rose-500 mb-6 tracking-wider";
+                }
+                currentHoveredOption = cardOption;
+            }
+        });
+
+        function handlePointerCommit() {
+            cancelPress();
+            if (!isMatrixSelecting) return;
+            
+            // 結束選取模式，無痕收回表格選單
+            isMatrixSelecting = false;
+            cardMatrixOverlay.classList.remove('flex');
+            cardMatrixOverlay.classList.add('hidden');
+
+            if (currentHoveredOption) {
+                const suitCode = currentHoveredOption.getAttribute('data-suit');
+                const valueStr = currentHoveredOption.getAttribute('data-value');
+
+                // 註冊為自訂第一張迫牌 (單人 & 多人一併更新)
+                state.customFirstCard = { suit: suitCode, value: valueStr };
+                state.forceCard = calculateForcedCardByOrder(1, state.customFirstCard);
+                
+                // 設定完第一張牌後，預設保持在隨機模式(magicianForceMode = false)，供魔術師做演示
+                state.magicianForceMode = false;
+                state.magicianForceIndex = 1;
+
+                currentHoveredOption.classList.remove('active-highlight');
+                currentHoveredOption = null;
+
+                playHeavyTick();
+                updateMagicianModeIndicator(); // 隨機模式下重新亮起灰色 M 記號
+
+                // 如果是多人連線房，同步將此設定寫入 Firebase，讓 1 號觀眾能完美同步
+                if (firebaseEnabled && state.role === 'magician' && state.roomId) {
+                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', state.roomId);
+                    updateDoc(roomRef, {
+                        customFirstCard: state.customFirstCard
+                    }).catch(e => console.error("雲端同步自訂迫牌失敗:", e));
+                }
+            }
+        }
+
+        window.addEventListener('pointerup', () => {
+            handlePointerCommit();
+        });
+
+        // 接管 Safari 由於元素覆蓋強制派發的 pointercancel，保障 100% 收攏
+        window.addEventListener('pointercancel', () => {
+            handlePointerCommit();
+        });
+
+        // 秘密熱區 Pointer 監聽與 Ghost Click 封鎖
+        magicHotspot.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            startPress(e);
+        });
+
+        magicHotspot.addEventListener('pointerup', (e) => {
+            e.stopPropagation();
+            e.preventDefault(); // 阻斷虛擬 click，防止鬆開熱區後意外開滾
+            cancelPress();
+            
+            // 魔術師在播放途中，短按也可進行隨機/迫牌模式快速無縫切换
+            const isPairingVisible = !magicianPairingPanel.classList.contains('hidden');
+            const isStartingCardBack = !defaultCardUi.classList.contains('hidden');
+            const isStartingState = isPairingVisible || isStartingCardBack;
+
+            if (!isMatrixSelecting && !isStartingState) {
+                state.magicianForceMode = !state.magicianForceMode;
+                if (state.magicianForceMode) {
+                    state.magicianForceIndex = 1;
+                    state.forceCard = calculateForcedCardByOrder(state.magicianForceIndex, state.customFirstCard);
+                }
+                updateMagicianModeIndicator();
+                playHeavyTick();
+            }
+        });
+
+        magicHotspot.addEventListener('pointercancel', () => { cancelPress(); });
+        magicHotspot.addEventListener('pointerleave', () => { cancelPress(); });
+        magicHotspot.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault(); // 百分之百截斷冒泡
+        });
+    </script>
+</body>
+</html>
