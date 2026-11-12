@@ -21,6 +21,7 @@ XRAY_DIR = os.path.join(ROOT_DIR, "magic_xray_liff")
 KEYCARD_DIR = os.path.join(ROOT_DIR, "keycard")
 FROZEN_DIR = os.path.join(ROOT_DIR, "theFrozenProofMindAR")
 DRAWCARDS_DIR = os.path.join(ROOT_DIR, "drawcards")
+DRAWACARD_DIR = os.path.join(ROOT_DIR, "drawacard")
 
 sys.path.insert(0, CURRENT_DIR)
 sys.path.insert(1, ROOT_DIR)
@@ -55,6 +56,8 @@ if os.path.exists(FROZEN_DIR):
     app.mount("/tricks/frozen", StaticFiles(directory=FROZEN_DIR, html=True), name="trick_frozen")
 if os.path.exists(DRAWCARDS_DIR):
     app.mount("/tricks/drawcards", StaticFiles(directory=DRAWCARDS_DIR, html=True), name="trick_drawcards")
+if os.path.exists(DRAWACARD_DIR):
+    app.mount("/tricks/drawacard", StaticFiles(directory=DRAWACARD_DIR, html=True), name="trick_drawacard")
 
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -143,6 +146,8 @@ async def liff_router(trick: str = "xray_card", mid: str = "", uid: str = "", to
         target = f"/tricks/frozen/index.html?mode=master&mid={mid}&token={token}"
     elif trick == "drawcards":
         target = f"/tricks/drawcards/index.html?mid={mid}&token={token}"
+    elif trick == "drawacard":
+        target = f"/tricks/drawacard/index.html?mid={mid}&token={token}"
     else:
         target = f"/tricks/xray/magic.html?mid={mid}&uid={uid}&token={token}"
     return RedirectResponse(url=target)
@@ -472,6 +477,40 @@ def handle_text_message(event):
                 [
                     create_flex_msg("多人畫牌已授權", flex_drawcards),
                     create_text_msg(f"🔗 多人畫牌直連網址：\n{launch_url}", quick_reply=quick_reply)
+                ]
+            )
+            return
+
+        elif trick_id == "drawacard":
+            launch_url = f"{BASE_URL}/tricks/drawacard/index.html?mid={user_id}&token={token}"
+            flex_drawacard = {
+                "type": "bubble",
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {"type": "text", "text": "🧙‍♂️ 畫魔術師已授權！", "weight": "bold", "size": "lg", "color": "#10b981"},
+                        {"type": "text", "text": "雙擊右下角隱藏區可秘密設定撲克牌，未設定則依今日日期運算。先畫出魔術師並按 Next，再請觀眾畫框點擊即可施展 3D 翻牌預言！", "size": "xs", "color": "#666666", "margin": "md", "wrap": True}
+                    ]
+                },
+                "footer": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "button",
+                            "style": "primary",
+                            "color": "#10b981",
+                            "action": {"type": "uri", "label": "🧙‍♂️ 啟動畫魔術師道具", "uri": launch_url}
+                        }
+                    ]
+                }
+            }
+            send_reply(
+                event.reply_token,
+                [
+                    create_flex_msg("畫魔術師已授權", flex_drawacard),
+                    create_text_msg(f"🔗 畫魔術師直連網址：\n{launch_url}", quick_reply=quick_reply)
                 ]
             )
             return

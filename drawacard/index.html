@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover">
+    <title>Cardtoon - Magic Card</title>
+    <style>
+        /* 🔒 Base Protection */
+        html, body { touch-action: none; -webkit-text-size-adjust: none; }
+        
+        body { 
+            margin: 0; background-image: url('./image_6.png'); background-size: 80%;
+            background-repeat: no-repeat; background-attachment: fixed;
+            background-color: rgba(0, 0, 0, 0.35); background-blend-mode: multiply;
+            display: flex; flex-direction: column; justify-content: flex-start; align-items: center; 
+            min-height: 100vh; font-family: sans-serif; color: #fff;
+            user-select: none; -webkit-user-select: none; overscroll-behavior: none;
+            background-position: -50% center; 
+        }
+
+        body.started { animation: stickmanEnter 3.0s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+        @keyframes stickmanEnter { from { background-position: -50% center; } to { background-position: 25% center; } }
+        
+        #magic-setup { 
+            --scale-factor: 1;
+            display: flex; flex-direction: column; align-items: center; 
+            margin-top: 100px; opacity: 0; transform-origin: top center;
+        }
+        body.started #magic-setup { animation: easelUp 2.4s cubic-bezier(0.175, 0.885, 0.32, 1.1) 1.8s forwards; }
+        @keyframes easelUp { 
+            from { transform: translateY(-50px) scale(var(--scale-factor)); opacity: 0; } 
+            to { transform: translateY(0) scale(var(--scale-factor)); opacity: 1; } 
+        }
+        
+        #status-text { text-align: center; margin: 0 0 20px 0; color: #f3c623; font-size: 20px; font-weight: bold; text-shadow: 0 2px 8px rgba(0,0,0,0.9); width: 320px; line-height: 1.5; opacity: 0; }
+        body.started #status-text { animation: fadeInText 0.5s ease 3.8s forwards; }
+        @keyframes fadeInText { to { opacity: 1; } }
+
+        @media (max-width: 500px) and (orientation: portrait) {
+            body { background-size: 110%; }
+            #magic-setup { margin-top: 80px; --scale-factor: 0.85; } 
+            #status-text { width: 340px; font-size: 22px; margin-bottom: 20px; }
+        }
+
+        #start-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #111111; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; cursor: pointer; transition: opacity 0.6s ease-in-out; touch-action: none; text-align: center; }
+        #start-prompt { font-size: 36px; color: #f3c623; font-weight: bold; letter-spacing: 2px; animation: textPulse 1.5s infinite alternate; margin-bottom: 15px; }
+        #start-sub { font-size: 20px; color: #aaaaaa; letter-spacing: 1px; }
+        .pulse-hint { animation: textPulse 1.5s infinite alternate; }
+        @keyframes textPulse { from { text-shadow: 0 2px 8px rgba(243, 198, 35, 0.3); transform: scale(0.98); } to { text-shadow: 0 2px 25px rgba(243, 198, 35, 1); color: #fff; transform: scale(1.02); } }
+
+        #magic-stage-wrapper { position: relative; }
+        #magic-stage { position: relative; width: 360px; height: 440px; background: #fafafa; border-radius: 6px; box-shadow: 0 30px 70px rgba(0,0,0,0.8), inset 0 0 30px rgba(0,0,0,0.02); border: 1px solid #e0e0e0; perspective: 1500px; z-index: 3; }
+        
+        #magic-stage-wrapper::after { content: ""; position: absolute; bottom: -8px; left: -20px; width: 400px; height: 16px; background: #8C5323; border-radius: 4px; box-shadow: 0 8px 20px rgba(0,0,0,0.6); z-index: 4; border-bottom: 3px solid #592E0F; }
+
+        #paintCanvas { position: absolute; top: 0; left: 0; z-index: 20; background: transparent; cursor: crosshair; touch-action: none; }
+        #magic-stage-wrapper.ready-to-click { cursor: pointer; }
+        
+        #magic-card-3d { position: absolute; z-index: 30; transform-style: preserve-3d; display: none; transition: transform 1.5s cubic-bezier(0.2, 0.8, 0.2, 1); transform-origin: center center; }
+        .card-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; }
+        .card-back { z-index: 2; }
+        .card-front { z-index: 1; transform: rotateY(180deg); }
+        
+        .clip-container { width: 100%; height: 100%; overflow: hidden; background: #fafafa; border-radius: 10px; opacity: 0; transition: opacity 3.0s ease-in-out; }
+        .clip-container.reveal { opacity: 1; }
+        
+        .frame-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
+        
+        .card-img { width: 100%; height: 100%; object-fit: fill; mix-blend-mode: multiply; filter: contrast(1.05) brightness(1.0); transform: scale(0.8); transform-origin: center center; }
+
+        #button-wrapper { margin-top: 35px; display: flex; justify-content: center; align-items: center; min-height: 50px; z-index: 10; opacity: 0; }
+        body.started #button-wrapper { animation: fadeInText 0.5s ease 3.8s forwards; }
+        #action-buttons { display: flex; gap: 30px; }
+        
+        .action-btn { padding: 12px 28px; font-size: 20px; border-radius: 8px; border: 2px solid #8C5323; background: #fafafa; color: #592E0F; cursor: pointer; font-weight: bold; box-shadow: 0 6px 12px rgba(0,0,0,0.6); transition: transform 0.1s; font-family: sans-serif; }
+        .action-btn.primary { background: #f3c623; border-color: #d4a700; color: #111; }
+        .action-btn:active { transform: scale(0.95); }
+
+        #btn-again { display: none; background: #f3c623; border-color: #d4a700; color: #111; }
+        
+        #secret-trigger { position: fixed; bottom: 0; right: 0; width: 90px; height: 90px; z-index: 10000; -webkit-tap-highlight-color: transparent;}
+        #secret-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(25, 25, 25, 0.98); border: 2px solid #f3c623; border-radius: 12px; padding: 25px; z-index: 10001; display: none; color: white; text-align: center; }
+        #secret-modal select, #secret-modal button { padding: 10px; font-size: 16px; margin: 8px; border-radius: 6px; border: 1px solid #444; background: #333; color: white; }
+        #secret-confirm { background: #f3c623 !important; color: black !important; font-weight: bold; padding: 10px 20px; border-radius: 6px; cursor: pointer; width: 140px; }
+    </style>
+</head>
+<body>
+
+    <div id="start-overlay">
+        <div id="start-prompt">Draw a Magician</div>
+        <div id="start-sub">Tap to Start</div>
+    </div>
+
+    <div id="magic-setup">
+        <h3 id="status-text">✏️ Please draw a magician</h3>
+        <div id="magic-stage-wrapper">
+            <div id="magic-stage">
+                <canvas id="paintCanvas" width="360" height="440"></canvas>
+                <div id="magic-card-3d">
+                    <div class="card-face card-back"><div class="clip-container"><img class="card-img" src="./cards/bicycle_blue.png" alt="back"></div><canvas class="frame-canvas"></canvas></div>
+                    <div class="card-face card-front"><div class="clip-container"><img id="img-front" class="card-img" src="" alt="front"></div><canvas class="frame-canvas"></canvas></div>
+                </div>
+            </div>
+        </div>
+        <div id="button-wrapper">
+            <div id="action-buttons">
+                <button id="btn-clear" class="action-btn">Clear</button>
+                <button id="btn-next" class="action-btn primary">Next</button>
+            </div>
+            <button id="btn-again" class="action-btn primary">Try Again</button>
+        </div>
+    </div>
+
+    <div id="secret-trigger"></div>
+    <div id="secret-modal">
+        <h3>🧙‍♂️ Mind Control: Set Target</h3>
+        <div style="margin: 15px 0;">
+            <select id="secret-suit">
+                <option value="heart">Hearts ♥</option>
+                <option value="spade">Spades ♠</option>
+                <option value="diamond">Diamonds ♦</option>
+                <option value="club">Clubs ♣</option>
+            </select>
+            <select id="secret-value">
+                <option value="1">A</option><option value="2">2</option><option value="3">3</option>
+                <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+                <option value="10">10</option><option value="jack">J</option><option value="queen">Q</option><option value="king">K</option>
+            </select>
+        </div>
+        <button id="secret-confirm">Inject Magic</button>
+    </div>
+
+    <script>
+        // ================= SaaS 訂閱平台權限驗證 =================
+        let isAuthorized = true;
+        window.addEventListener('DOMContentLoaded', async () => {
+            const params = new URLSearchParams(window.location.search);
+            const mid = params.get('mid') || '';
+            const token = params.get('token') || '';
+            try {
+                const res = await fetch(`/api/auth/verify?trick=drawacard&mid=${encodeURIComponent(mid)}&token=${encodeURIComponent(token)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.authorized) {
+                        isAuthorized = false;
+                        document.body.innerHTML = `
+                            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;width:100vw;padding:24px;text-align:center;background:#111;color:#fff;">
+                                <div style="font-size:48px;margin-bottom:16px;">🔒</div>
+                                <h2 style="color:#10b981;margin:0 0 12px 0;">未經授權的存取</h2>
+                                <p style="color:#888;font-size:14px;max-width:300px;line-height:1.6;">${data.message || '「畫魔術師」為訂閱會員專屬魔術道具，請從認證官方帳號選單開啟！'}</p>
+                            </div>
+                        `;
+                    }
+                }
+            } catch (e) {
+                console.log("Standalone preview");
+            }
+        });
+
+        document.addEventListener('touchstart', (e) => { 
+            if (e.touches.length > 1) e.preventDefault(); 
+        }, { passive: false });
+
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function(event) {
+            const nowTime = Date.now();
+            if (nowTime - lastTouchEnd <= 300) {
+                if (!event.target.closest('#secret-modal') && event.target.id !== 'paintCanvas' && !event.target.classList.contains('action-btn')) {
+                    event.preventDefault(); 
+                }
+            }
+            lastTouchEnd = nowTime;
+        }, { passive: false });
+        
+        const suitOrder = ["heart", "spade", "diamond", "club"];
+        const now = new Date();
+        const initialMonth = now.getMonth() + 1; 
+        const date = now.getDate();       
+        const remainder = date % 4;
+        
+        let currentSuit = (remainder === 1) ? "club" : (remainder === 2) ? "diamond" : (remainder === 3) ? "heart" : "spade";
+        let currentValString = initialMonth.toString();
+        
+        const imgFront = document.getElementById('img-front');
+        
+        function getCardValueName(val) {
+            if (val === 1 || val === '1') return '1';
+            if (val === 11 || val === 'jack') return 'jack';
+            if (val === 12 || val === 'queen') return 'queen';
+            if (val === 13 || val === 'king') return 'king';
+            return val.toString();
+        }
+        
+        function getCardValueNumber(valName) {
+            if (valName === 'jack') return 11;
+            if (valName === 'queen') return 12;
+            if (valName === 'king') return 13;
+            return parseInt(valName, 10);
+        }
+
+        function syncFrontImage() {
+            imgFront.src = `./cards/${currentSuit}_${getCardValueName(currentValString)}.png`; 
+        }
+        
+        syncFrontImage();
+        
+        const canvas = document.getElementById('paintCanvas');
+        const ctx = canvas.getContext('2d');
+        const statusText = document.getElementById('status-text');
+        const startOverlay = document.getElementById('start-overlay');
+        const btnClear = document.getElementById('btn-clear');
+        const btnNext = document.getElementById('btn-next');
+        const btnAgain = document.getElementById('btn-again');
+        const actionButtons = document.getElementById('action-buttons');
+        const card3D = document.getElementById('magic-card-3d');
+        const stageWrapper = document.getElementById('magic-stage-wrapper');
+        const secretTrigger = document.getElementById('secret-trigger');
+        const secretModal = document.getElementById('secret-modal');
+        const secretConfirm = document.getElementById('secret-confirm');
+        const secretSuit = document.getElementById('secret-suit');
+        const secretValue = document.getElementById('secret-value');
+
+        ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+        startOverlay.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!isAuthorized) return;
+            document.body.classList.add('started');
+            startOverlay.style.opacity = '0';
+            setTimeout(() => { startOverlay.style.display = 'none'; }, 600);
+        }, { passive: false });
+
+        let magicState = -1;
+        let isDrawing = false;
+        let tracePoints = [];
+        let savedCanvasState = null;
+        let lastTapTime = 0;
+
+        secretTrigger.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const currentTime = Date.now();
+            if (currentTime - lastTapTime < 300 && currentTime - lastTapTime > 0) {
+                secretModal.style.display = 'block';
+                secretSuit.value = currentSuit;
+                secretValue.value = getCardValueName(currentValString);
+            }
+            lastTapTime = currentTime;
+        }, { passive: false });
+
+        secretConfirm.addEventListener('click', (e) => {
+            e.stopPropagation();
+            currentSuit = secretSuit.value;
+            currentValString = secretValue.value;
+            syncFrontImage();
+            secretModal.style.display = 'none';
+        });
+
+        btnClear.addEventListener('click', () => { if (magicState === -1) ctx.clearRect(0, 0, canvas.width, canvas.height); });
+        
+        btnNext.addEventListener('click', () => {
+            magicState = 0;
+            savedCanvasState = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            statusText.innerText = "✨ Draw a frame of card";
+            actionButtons.style.display = 'none';
+        });
+
+        // 🛠 修正 pointerdown 座標計算
+        canvas.addEventListener('pointerdown', (e) => {
+            if(magicState > 0 && magicState < 4) return;
+            isDrawing = true;
+            const rect = canvas.getBoundingClientRect();
+            // 計算縮放比例
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            // 套用比例修正座標
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * scaleY;
+            
+            if (magicState === 0) {
+                tracePoints = [];
+                if (savedCanvasState) ctx.putImageData(savedCanvasState, 0, 0);
+            }
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        });
+
+        // 🛠 修正 pointermove 座標計算
+        canvas.addEventListener('pointermove', (e) => {
+            if (!isDrawing || (magicState > 0 && magicState < 4)) return;
+            const rect = canvas.getBoundingClientRect();
+            // 計算縮放比例
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            // 套用比例修正座標
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * scaleY;
+
+            if (magicState === 0) tracePoints.push({x, y});
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        });
+
+        window.addEventListener('pointerup', () => {
+            if (!isDrawing) return;
+            isDrawing = false;
+            if (magicState === 0 && tracePoints.length > 10) {
+                magicState = 1;
+                statusText.innerText = "👉 Tap to cast the spell...";
+                statusText.classList.add('pulse-hint');
+                stageWrapper.classList.add('ready-to-click');
+            }
+        });
+
+        function getSortedCorners(pts) {
+            let tl = pts[0], tr = pts[0], br = pts[0], bl = pts[0];
+            let minSum = Infinity, maxSum = -Infinity, minDiff = Infinity, maxDiff = -Infinity;
+            pts.forEach(p => {
+                let sum = p.x + p.y, diff = p.x - p.y;
+                if (sum < minSum) { minSum = sum; tl = p; }   
+                if (sum > maxSum) { maxSum = sum; br = p; }   
+                if (diff > maxDiff) { maxDiff = diff; tr = p; } 
+                if (diff < minDiff) { minDiff = diff; bl = p; } 
+            });
+            return [tl, tr, br, bl];
+        }
+
+        stageWrapper.addEventListener('click', (e) => {
+            e.stopPropagation();
+
+            if (magicState === 1) {
+                magicState = 3; 
+                statusText.classList.remove('pulse-hint');
+                stageWrapper.classList.remove('ready-to-click'); 
+                statusText.innerText = "⏳ Infusing magic into your drawing...";
+
+                const corners = getSortedCorners(tracePoints);
+                let allXs = tracePoints.map(p => p.x); 
+                let allYs = tracePoints.map(p => p.y);
+                let minX = Math.min(...allXs) - 5; 
+                let maxX = Math.max(...allXs) + 5;
+                let minY = Math.min(...allYs) - 5; 
+                let maxY = Math.max(...allYs) + 5;
+                
+                let boxWidth = maxX - minX; 
+                let boxHeight = maxY - minY;
+                
+                card3D.style.width = `${boxWidth}px`; 
+                card3D.style.height = `${boxHeight}px`;
+                card3D.style.left = `${minX}px`; 
+                card3D.style.top = `${minY}px`;
+                
+                let pct0_x = ((corners[0].x - minX) / boxWidth) * 100; let pct0_y = ((corners[0].y - minY) / boxHeight) * 100;
+                let pct1_x = ((corners[1].x - minX) / boxWidth) * 100; let pct1_y = ((corners[1].y - minY) / boxHeight) * 100;
+                let pct2_x = ((corners[2].x - minX) / boxWidth) * 100; let pct2_y = ((corners[2].y - minY) / boxHeight) * 100;
+                let pct3_x = ((corners[3].x - minX) / boxWidth) * 100; let pct3_y = ((corners[3].y - minY) / boxHeight) * 100;
+                const clipPathString = `polygon(${pct0_x}% ${pct0_y}%, ${pct1_x}% ${pct1_y}%, ${pct2_x}% ${pct2_y}%, ${pct3_x}% ${pct3_y}%)`;
+                
+                const clipContainers = card3D.querySelectorAll('.clip-container');
+                clipContainers.forEach(container => { container.style.clipPath = clipPathString; });
+                
+                const fCanvasBack = card3D.querySelector('.card-back .frame-canvas');
+                const fCanvasFront = card3D.querySelector('.card-front .frame-canvas');
+
+                fCanvasBack.width = boxWidth; fCanvasBack.height = boxHeight;
+                const fCtxBack = fCanvasBack.getContext('2d');
+                fCtxBack.strokeStyle = '#1a1a1a'; fCtxBack.lineWidth = 4; fCtxBack.lineCap = 'round'; fCtxBack.lineJoin = 'round';
+                fCtxBack.beginPath();
+                tracePoints.forEach((p, i) => {
+                    if (i === 0) fCtxBack.moveTo(p.x - minX, p.y - minY);
+                    else fCtxBack.lineTo(p.x - minX, p.y - minY);
+                });
+                fCtxBack.stroke();
+
+                fCanvasFront.width = boxWidth; fCanvasFront.height = boxHeight;
+                const fCtxFront = fCanvasFront.getContext('2d');
+                fCtxFront.translate(boxWidth, 0); 
+                fCtxFront.scale(-1, 1);           
+                fCtxFront.strokeStyle = '#1a1a1a'; fCtxFront.lineWidth = 4; fCtxFront.lineCap = 'round'; fCtxFront.lineJoin = 'round';
+                fCtxFront.beginPath();
+                tracePoints.forEach((p, i) => {
+                    if (i === 0) fCtxFront.moveTo(p.x - minX, p.y - minY);
+                    else fCtxFront.lineTo(p.x - minX, p.y - minY);
+                });
+                fCtxFront.stroke();
+
+                if (savedCanvasState) {
+                    ctx.putImageData(savedCanvasState, 0, 0);
+                }
+
+                card3D.style.zIndex = '30'; 
+                card3D.style.display = 'block';
+
+                setTimeout(() => {
+                    statusText.innerText = "🔮 Spatial anomaly detected, forming card back...";
+                    clipContainers.forEach(container => container.classList.add('reveal'));
+                }, 300);
+
+                setTimeout(() => {
+                    magicState = 2;
+                    statusText.innerText = "🃏 A miracle is born! Tap to cast the spell...";
+                    statusText.classList.add('pulse-hint');
+                    stageWrapper.classList.add('ready-to-click'); 
+                }, 3500);
+            }
+            else if (magicState === 2) {
+                magicState = 3; 
+                statusText.classList.remove('pulse-hint');
+                stageWrapper.classList.remove('ready-to-click');
+                statusText.innerText = "✨ Revealing your magic card...";
+                card3D.style.transform = `rotateY(180deg)`;
+
+                setTimeout(() => {
+                    magicState = 4;
+                    statusText.innerText = "🎨 The magic is complete! Feel free to continue drawing...";
+                    btnAgain.style.display = 'block';
+                }, 1500);
+            }
+        });
+
+        btnAgain.addEventListener('click', (e) => {
+            e.stopPropagation();
+
+            let currentNum = getCardValueNumber(currentValString);
+            let nextNum = currentNum + 5;
+            if (nextNum > 13) {
+                nextNum -= 13;
+            }
+            currentValString = getCardValueName(nextNum);
+
+            let currentSuitIdx = suitOrder.indexOf(currentSuit);
+            if (currentSuitIdx === -1) currentSuitIdx = 0; 
+            let nextSuitIdx = (currentSuitIdx + 1) % 4;
+            currentSuit = suitOrder[nextSuitIdx];
+
+            syncFrontImage();
+
+            magicState = -1;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            card3D.style.transform = 'rotateY(0deg)';
+            card3D.style.display = 'none';
+            
+            const clipContainers = card3D.querySelectorAll('.clip-container');
+            clipContainers.forEach(container => container.classList.remove('reveal'));
+
+            btnAgain.style.display = 'none';
+            actionButtons.style.display = 'flex';
+            statusText.innerText = "✏️ Please draw a magician";
+        });
+    </script>
+</body>
+</html>

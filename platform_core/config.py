@@ -66,5 +66,15 @@ TRICK_REGISTRY = {
         "tier": "pro",
         "free_trial_daily": 0,
         "color": "#f59e0b"
+    },
+    "drawacard": {
+        "id": "drawacard",
+        "name": "畫魔術師 (Draw a Card)",
+        "short_name": "畫魔術師",
+        "subtitle": "手繪專屬魔術師進場 + 雙擊右下角密技選牌 + 3D 翻牌現形",
+        "entry_path": "/tricks/drawacard/index.html",
+        "tier": "pro",
+        "free_trial_daily": 0,
+        "color": "#10b981"
     }
 }
