@@ -23,6 +23,7 @@ FROZEN_DIR = os.path.join(ROOT_DIR, "theFrozenProofMindAR")
 DRAWCARDS_DIR = os.path.join(ROOT_DIR, "drawcards")
 DRAWACARD_DIR = os.path.join(ROOT_DIR, "drawacard")
 PICKONECARDS_DIR = os.path.join(ROOT_DIR, "pickonecards")
+PINKINGCARD_DIR = os.path.join(ROOT_DIR, "pinkingcard")
 
 sys.path.insert(0, CURRENT_DIR)
 sys.path.insert(1, ROOT_DIR)
@@ -61,6 +62,8 @@ if os.path.exists(DRAWACARD_DIR):
     app.mount("/tricks/drawacard", StaticFiles(directory=DRAWACARD_DIR, html=True), name="trick_drawacard")
 if os.path.exists(PICKONECARDS_DIR):
     app.mount("/tricks/pickonecards", StaticFiles(directory=PICKONECARDS_DIR, html=True), name="trick_pickonecards")
+if os.path.exists(PINKINGCARD_DIR):
+    app.mount("/tricks/pinkingcard", StaticFiles(directory=PINKINGCARD_DIR, html=True), name="trick_pinkingcard")
 
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -153,6 +156,8 @@ async def liff_router(trick: str = "xray_card", mid: str = "", uid: str = "", to
         target = f"/tricks/drawacard/index.html?mid={mid}&token={token}"
     elif trick == "pickonecards":
         target = f"/tricks/pickonecards/index.html?mid={mid}&token={token}"
+    elif trick == "pinkingcard":
+        target = f"/tricks/pinkingcard/index.html?mid={mid}&token={token}"
     else:
         target = f"/tricks/xray/magic.html?mid={mid}&uid={uid}&token={token}"
     return RedirectResponse(url=target)
@@ -550,6 +555,40 @@ def handle_text_message(event):
                 [
                     create_flex_msg("手機迫牌(多人版)已授權", flex_pickonecards),
                     create_text_msg(f"🔗 手機迫牌(多人版)直連網址：\n{launch_url}", quick_reply=quick_reply)
+                ]
+            )
+            return
+
+        elif trick_id == "pinkingcard":
+            launch_url = f"{BASE_URL}/tricks/pinkingcard/index.html?mid={user_id}&token={token}"
+            flex_pinkingcard = {
+                "type": "bubble",
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {"type": "text", "text": "🎯 單人迫牌已授權！", "weight": "bold", "size": "lg", "color": "#db2777"},
+                        {"type": "text", "text": "輕觸螢幕開始快速輪播並瞬停！前兩輪自由停牌，第三輪及後續連鎖將依今日日期演算法精準迫牌（長按右下角 1 秒可秘密自訂首張強迫牌或重設）。", "size": "xs", "color": "#666666", "margin": "md", "wrap": True}
+                    ]
+                },
+                "footer": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "button",
+                            "style": "primary",
+                            "color": "#db2777",
+                            "action": {"type": "uri", "label": "🎯 啟動單人迫牌道具", "uri": launch_url}
+                        }
+                    ]
+                }
+            }
+            send_reply(
+                event.reply_token,
+                [
+                    create_flex_msg("單人迫牌已授權", flex_pinkingcard),
+                    create_text_msg(f"🔗 單人迫牌直連網址：\n{launch_url}", quick_reply=quick_reply)
                 ]
             )
             return

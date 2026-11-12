@@ -86,5 +86,15 @@ TRICK_REGISTRY = {
         "tier": "pro",
         "free_trial_daily": 0,
         "color": "#e11d48"
+    },
+    "pinkingcard": {
+        "id": "pinkingcard",
+        "name": "單人迫牌 (The Prediction)",
+        "short_name": "單人迫牌",
+        "subtitle": "高速單機輪播瞬停 + 日期演算法連鎖預言 + 長按隱密指定首張強迫牌",
+        "entry_path": "/tricks/pinkingcard/index.html",
+        "tier": "pro",
+        "free_trial_daily": 0,
+        "color": "#db2777"
     }
 }

@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- Safari Web App iOS 專用優化標籤 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ThePrediction">
+    
+    <title>The Prediction</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide 圖標 -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800;900&family=Noto+Sans+TC:wght@300;400;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: radial-gradient(circle at center, #110512 0%, #020104 100%);
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        .magic-title {
+            font-family: 'Cinzel', serif;
+        }
+
+        .card-pulse {
+            animation: pulse-border 3s infinite;
+        }
+
+        @keyframes pulse-border {
+            0%, 100% { box-shadow: 0 0 12px rgba(239, 68, 68, 0.1); }
+            50% { box-shadow: 0 0 25px rgba(239, 68, 68, 0.3); }
+        }
+
+        /* 瞬停時的黃金衝擊波特效 */
+        .impact-ring {
+            position: absolute;
+            border: 5px solid rgba(245, 158, 11, 0.85);
+            border-radius: 1rem;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0;
+            z-index: 20;
+        }
+
+        .animate-impact {
+            animation: impact-shimmer 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes impact-shimmer {
+            0% {
+                transform: scale(0.95);
+                opacity: 1;
+                border-color: rgba(245, 158, 11, 0.9);
+            }
+            100% {
+                transform: scale(1.15);
+                opacity: 0;
+                border-color: rgba(239, 68, 68, 0);
+            }
+        }
+
+        /* 強制啟用 iOS Webkit 3D 硬體加速，徹底消除動態切換閃爍 */
+        .accelerate-gpu {
+            -webkit-transform: translate3d(0, 0, 0);
+            -moz-transform: translate3d(0, 0, 0);
+            -ms-transform: translate3d(0, 0, 0);
+            transform: translate3d(0, 0, 0);
+            -webkit-backface-visibility: hidden;
+            -moz-backface-visibility: hidden;
+            -ms-backface-visibility: hidden;
+            backface-visibility: hidden;
+            -webkit-perspective: 1000;
+            perspective: 1000;
+            -webkit-transform-style: preserve-3d;
+            transform-style: preserve-3d;
+            will-change: transform;
+        }
+    </style>
+</head>
+<body id="interactive-screen" class="min-h-screen text-gray-100 flex flex-col justify-center items-center p-6 select-none relative cursor-pointer">
+
+    <!-- 主要魔術表演區域 -->
+    <main class="flex flex-col items-center justify-center w-full max-w-sm">
+
+        <!-- 撲克牌展示區域 -->
+        <div class="relative flex flex-col items-center justify-center pointer-events-none">
+            
+            <!-- 卡牌後方的霓虹光暈 -->
+            <div id="card-glow" class="absolute w-72 h-[380px] bg-red-600/5 rounded-2xl blur-3xl transition-all duration-1000 opacity-50"></div>
+
+            <!-- 卡牌外框容器 (黃金比例：寬256px * 高358px，比例約為 1:1.40) -->
+            <div id="card-outer" class="relative w-64 h-[358px] bg-neutral-950/90 border border-white/10 rounded-2xl card-pulse flex items-center justify-center transition-all duration-300 overflow-hidden accelerate-gpu">
+                
+                <!-- 內層雙槽卡牌滑動通道 -->
+                <div id="card-content" class="w-full h-full relative rounded-2xl overflow-hidden will-change-transform bg-transparent">
+                    
+                    <!-- 卡牌槽 A (目前展示中) -->
+                    <div id="slot-active" class="absolute inset-0 w-full h-full flex items-center justify-center translate-x-0 will-change-transform p-0 accelerate-gpu">
+                        <!-- 預設開場 Ready 樣式 -->
+                        <div id="default-card-ui" class="w-full h-full flex flex-col items-center justify-center border-[3px] border-red-950/80 rounded-2xl bg-gradient-to-b from-neutral-950 via-red-950 to-neutral-950 p-4 relative overflow-hidden shadow-2xl">
+                            <div class="absolute inset-0 opacity-15 bg-[radial-gradient(#ff0000_1px,transparent_1px)] [background-size:12px_12px]"></div>
+                            
+                            <!-- 經典神秘卡背中央圖騰 -->
+                            <div class="w-16 h-16 rounded-full border border-red-800/40 flex items-center justify-center mb-6 relative">
+                                <div class="absolute inset-1 rounded-full border border-dashed border-red-700/30 animate-spin" style="animation-duration: 25s;"></div>
+                                <i data-lucide="eye" class="w-6 h-6 text-red-900 animate-pulse"></i>
+                            </div>
+
+                            <h2 class="text-red-500 font-bold tracking-widest text-lg magic-title mb-1">The Prediction</h2>
+                            <p id="preloader-status-text" class="text-neutral-500 text-[9px] tracking-widest uppercase">tap to start</p>
+                        </div>
+                    </div>
+
+                    <!-- 卡牌槽 B (準備滑入中) -->
+                    <div id="slot-incoming" class="absolute inset-0 w-full h-full flex items-center justify-center translate-x-full will-change-transform p-0 accelerate-gpu">
+                    </div>
+
+                </div>
+
+                <!-- 衝擊波擴散特效層 -->
+                <div id="impact-wave" class="impact-ring"></div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- ================= GPU 紋理保溫庫 (定位於螢幕極外，維持渲染但不阻礙視覺，強迫手機解碼全套卡片) ================= -->
+    <div id="gpu-card-vault" class="fixed -left-[9999px] -top-[9999px] w-64 h-[358px] opacity-100 pointer-events-none overflow-hidden z-[-100]">
+    </div>
+
+    <!-- ================= 右下角極隱密長按設定與重設熱區 ================= -->
+    <div id="magic-hotspot" class="absolute bottom-0 right-0 w-24 h-24 opacity-0 z-50 cursor-default"></div>
+
+    <!-- ================= 魔術師設定後台面版 (全螢幕暗黑玻璃彈窗) ================= -->
+    <div id="magician-modal" class="fixed inset-0 bg-black/95 backdrop-blur-lg flex items-center justify-center p-6 z-50 hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-neutral-900/95 border border-white/10 rounded-2xl w-full max-w-xs p-6 shadow-2xl relative">
+            
+            <div class="flex justify-between items-center pb-3 border-b border-white/10 mb-6">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="sliders" class="text-amber-500"></i>
+                    <h3 class="text-sm font-bold tracking-wider text-amber-500">魔術師預言設定</h3>
+                </div>
+            </div>
+
+            <!-- 強迫牌自訂設定 -->
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">設定首張強迫牌</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <!-- 花色選擇 -->
+                        <div>
+                            <span class="text-[10px] text-gray-500 block mb-1">花色 (Suit)</span>
+                            <select id="force-suit" class="w-full bg-neutral-950 border border-white/10 rounded-lg px-2 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500">
+                                <option value="H" selected>紅心 (heart)</option>
+                                <option value="D">方塊 (diamond)</option>
+                                <option value="S">黑桃 (spade)</option>
+                                <option value="C">梅花 (club)</option>
+                            </select>
+                        </div>
+                        <!-- 點數選擇 -->
+                        <div>
+                            <span class="text-[10px] text-gray-500 block mb-1">點數 (Value)</span>
+                            <select id="force-value" class="w-full bg-neutral-950 border border-white/10 rounded-lg px-2 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500">
+                                <option value="A">A (1)</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                                <option value="6" selected>6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                                <option value="9">9</option>
+                                <option value="10">10</option>
+                                <option value="J">J (jack)</option>
+                                <option value="Q">Q (queen)</option>
+                                <option value="K">K (king)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 確定完成按鈕 -->
+                <button id="settings-save-btn" class="w-full py-3 bg-amber-600 hover:bg-amber-500 text-neutral-950 font-bold text-xs tracking-wider rounded-lg transition-all duration-150">
+                    確認並離開
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 背景極微弱動態網格 -->
+    <div class="absolute inset-0 bg-[linear-gradient(to_right,#ffffff01_1px,transparent_1px),linear-gradient(to_bottom,#ffffff01_1px,transparent_1px)] bg-[size:60px_60px] pointer-events-none"></div>
+
+    <script>
+        lucide.createIcons();
+
+        // --- 全域變數與卡牌庫 ---
+        const suits = [
+            { code: 'H', char: '♥', color: 'text-red-600', engName: 'heart', isRed: true },
+            { code: 'S', char: '♠', color: 'text-neutral-900', engName: 'spade', isRed: false },
+            { code: 'D', char: '♦', color: 'text-red-500', engName: 'diamond', isRed: true },
+            { code: 'C', char: '♣', color: 'text-neutral-800', engName: 'club', isRed: false }
+        ];
+
+        const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+        // 月份對應數字 (1月=A, 2月=2... 12月=Q)
+        // 日期除以4，餘1梅花(C)、餘2方塊/紅磚(D)、餘3紅心(H)、整除(餘0)黑桃(S)
+        function getTodayForceCard() {
+            const today = new Date();
+            const monthIndex = today.getMonth(); // 0 = 1月, 11 = 12月
+            const date = today.getDate();
+            
+            const valueMap = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+            const initialValue = valueMap[monthIndex] || '6';
+
+            const remainder = date % 4;
+            let initialSuit = 'S'; // 預設整除為黑桃 (♠)
+            if (remainder === 1) {
+                initialSuit = 'C'; // 梅花 (♣)
+            } else if (remainder === 2) {
+                initialSuit = 'D'; // 方塊/紅磚 (♦)
+            } else if (remainder === 3) {
+                initialSuit = 'H'; // 紅心 (♥)
+            }
+
+            return { suit: initialSuit, value: initialValue };
+        }
+
+        // 魔術引導流程狀態機 (220ms 恆定間隔)
+        let state = {
+            phase: 0, 
+            status: 'idle', // idle, flashing, finished
+            normalSpeed: 220, // 完美的 220 毫秒高速輪播
+            forceCard: getTodayForceCard(), // 動態設定當天初始強迫牌
+            flashTimeout: null,
+            currentDisplayCard: null,
+            stopping: false,
+            isTransitioning: false,
+            deck: []
+        };
+
+        // 智慧型圖片快取狀態
+        const imageCache = {};
+
+        // --- DOM 節點獲取 ---
+        const cardOuter = document.getElementById('card-outer');
+        const cardContent = document.getElementById('card-content');
+        const slotActive = document.getElementById('slot-active');
+        const slotIncoming = document.getElementById('slot-incoming');
+        const defaultCardUi = document.getElementById('default-card-ui');
+        const cardGlow = document.getElementById('card-glow');
+        const impactWave = document.getElementById('impact-wave');
+        const interactiveScreen = document.getElementById('interactive-screen');
+        const preloaderStatusText = document.getElementById('preloader-status-text');
+        const gpuCardVault = document.getElementById('gpu-card-vault');
+
+        // 魔術師設定後台與隱密熱區
+        const magicHotspot = document.getElementById('magic-hotspot');
+        const magicianModal = document.getElementById('magician-modal');
+        const settingsSaveBtn = document.getElementById('settings-save-btn');
+        const forceSuitSelect = document.getElementById('force-suit');
+        const forceValueSelect = document.getElementById('force-value');
+
+        // --- 觸覺震動回饋 ---
+        function playTick() {
+            try {
+                if (window.navigator && window.navigator.vibrate) {
+                    window.navigator.vibrate(8);
+                }
+            } catch(e){}
+        }
+
+        function playHeavyTick() {
+            try {
+                if (window.navigator && window.navigator.vibrate) {
+                    window.navigator.vibrate([25, 35, 10]);
+                }
+            } catch(e){}
+        }
+
+        // --- 背景智慧預載與 GPU 暖身引擎 ---
+        function startPreloadingAllCards() {
+            let loadedCount = 0;
+            const totalCards = 52;
+            
+            suits.forEach(s => {
+                values.forEach(v => {
+                    const suitName = s.engName;
+                    let valName = v.toLowerCase();
+                    if (valName === 'a') valName = '1';
+                    if (valName === 'j') valName = 'jack';
+                    if (valName === 'q') valName = 'queen';
+                    if (valName === 'k') valName = 'king';
+
+                    const key = `${s.code}_${v}`;
+                    const src = `./cards/${suitName}_${valName}.png`;
+                    
+                    const img = new Image();
+                    img.src = src;
+                    img.onload = () => {
+                        imageCache[key] = { status: 'success', src: src };
+                        checkProgress();
+                    };
+                    img.onerror = () => {
+                        imageCache[key] = { status: 'failed' };
+                        checkProgress();
+                    };
+                });
+            });
+
+            function checkProgress() {
+                loadedCount++;
+                if (loadedCount === totalCards) {
+                    preloaderStatusText.innerText = "tap to start";
+                    // 核心修正：當全部卡片下載確認後，立刻初始化保溫庫，強迫瀏覽器在後台將卡牌解碼至 GPU
+                    initGPUVault();
+                } else {
+                    const percent = Math.floor((loadedCount / totalCards) * 100);
+                    preloaderStatusText.innerText = `READY ${percent}%`;
+                }
+            }
+        }
+
+        let appBootstrapped = false;
+
+        window.addEventListener('load', async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const midParam = urlParams.get('mid') || '';
+            const tokenParam = urlParams.get('token') || '';
+            try {
+                const verifyRes = await fetch(`/api/auth/verify?trick=pinkingcard&mid=${encodeURIComponent(midParam)}&token=${encodeURIComponent(tokenParam)}`);
+                if (verifyRes.ok) {
+                    const data = await verifyRes.json();
+                    if (!data.authorized) {
+                        document.body.innerHTML = `
+                            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;width:100vw;padding:24px;text-align:center;background:#0a030b;color:#fff;">
+                                <div style="font-size:48px;margin-bottom:16px;">🔒</div>
+                                <h2 style="color:#db2777;margin:0 0 12px 0;font-size:20px;font-weight:bold;">未經授權的存取</h2>
+                                <p style="color:#9ca3af;font-size:14px;max-width:300px;line-height:1.6;">${data.message || '「單人迫牌」為訂閱會員專屬魔術道具，請從認證官方帳號選單開啟！'}</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.log("Standalone preview");
+            }
+
+            appBootstrapped = true;
+            startPreloadingAllCards();
+            
+            // 讓魔術師後台下拉選單與當日動態初始強迫牌同步
+            if (forceSuitSelect && forceValueSelect) {
+                forceSuitSelect.value = state.forceCard.suit;
+                forceValueSelect.value = state.forceCard.value;
+            }
+        });
+
+        // --- 備用 HTML5 SVG 渲染器 ---
+        function generateCardSVG(suitCode, valueStr) {
+            const suitObj = suits.find(s => s.code === suitCode);
+            const suitChar = suitObj.char;
+            const isRed = suitObj.isRed;
+            const colorClass = isRed ? '#dc2626' : '#171717';
+            
+            let centerGraphics = '';
+            
+            if (['J', 'Q', 'K'].includes(valueStr)) {
+                const faceColor = isRed ? '#fef2f2' : '#f5f5f5';
+                const crownColor = '#d97706';
+                centerGraphics = `
+                    <rect x="45" y="65" width="110" height="150" rx="6" fill="none" stroke="${colorClass}" stroke-width="2" stroke-dasharray="3 3"/>
+                    <circle cx="100" cy="130" r="32" fill="${faceColor}" stroke="${colorClass}" stroke-width="2"/>
+                    <path d="M 85 112 L 90 122 L 100 112 L 110 122 L 115 112 L 112 130 L 88 130 Z" fill="${crownColor}"/>
+                    <text x="100" y="185" font-size="28" fill="${colorClass}" text-anchor="middle" font-weight="bold">${valueStr}</text>
+                `;
+            } else if (valueStr === 'A') {
+                centerGraphics = `
+                    <text x="100" y="165" font-size="75" fill="${colorClass}" text-anchor="middle">${suitChar}</text>
+                `;
+            } else {
+                centerGraphics = `
+                    <text x="100" y="160" font-size="52" fill="${colorClass}" text-anchor="middle">${suitChar}</text>
+                `;
+            }
+
+            return `
+                <svg width="100%" height="100%" viewBox="0 0 200 280" xmlns="http://www.w3.org/2000/svg" class="select-none pointer-events-none">
+                    <rect x="2" y="2" width="196" height="276" rx="12" fill="#ffffff" stroke="#e5e7eb" stroke-width="2"/>
+                    <g transform="translate(16, 14)">
+                        <text x="0" y="18" font-size="22" font-weight="900" fill="${colorClass}" text-anchor="middle">${valueStr}</text>
+                        <text x="0" y="34" font-size="15" fill="${colorClass}" text-anchor="middle">${suitChar}</text>
+                    </g>
+                    <g transform="translate(184, 266) rotate(180)">
+                        <text x="0" y="18" font-size="22" font-weight="900" fill="${colorClass}" text-anchor="middle">${valueStr}</text>
+                        <text x="0" y="34" font-size="15" fill="${colorClass}" text-anchor="middle">${suitChar}</text>
+                    </g>
+                    ${centerGraphics}
+                </svg>
+            `;
+        }
+
+        // --- 零邊界、完美 1:1.4 比例填充渲染通道 ---
+        function generateCardImageHTML(suitCode, valueStr) {
+            const key = `${suitCode}_${valueStr}`;
+            const cacheItem = imageCache[key];
+
+            // 1. 如果預載已確定此卡圖片失效，直接在毫秒級渲染備用 SVG
+            if (cacheItem && cacheItem.status === 'failed') {
+                return `
+                    <div class="w-full h-full bg-white rounded-2xl shadow-lg flex items-center justify-center overflow-hidden accelerate-gpu">
+                        ${generateCardSVG(suitCode, valueStr)}
+                    </div>
+                `;
+            }
+
+            // 2. 如果預載成功，直接使用快取成功的圖片路徑
+            const suitObj = suits.find(s => s.code === suitCode);
+            const suitName = suitObj.engName;
+            let valName = valueStr.toLowerCase();
+            if (valName === 'a') valName = '1';
+            if (valName === 'j') valName = 'jack';
+            if (valName === 'q') valName = 'queen';
+            if (valName === 'k') valName = 'king';
+            const imgSrc = `./cards/${suitName}_${valName}.png`;
+
+            // 用 object-fill 讓撲克牌圖片百分之百完美填滿 w-full h-full，並綁定 GPU 加速類別
+            return `
+                <img src="${imgSrc}" 
+                     alt="${suitCode}${valueStr}" 
+                     class="w-full h-full object-fill rounded-2xl pointer-events-none select-none accelerate-gpu" 
+                     onerror="this.onerror=null; this.outerHTML=generateCardSVG('${suitCode}', '${valueStr}')" />
+            `;
+        }
+
+        // --- 初始化 GPU 保溫庫：在螢幕外預先渲染並強制解碼全部 52 張卡，避免高頻率 DOM 重建時閃爍 ---
+        function initGPUVault() {
+            gpuCardVault.innerHTML = '';
+            suits.forEach(s => {
+                values.forEach(v => {
+                    const tempWrapper = document.createElement('div');
+                    tempWrapper.id = `vault-wrapper-${s.code}-${v}`;
+                    tempWrapper.className = "absolute inset-0 w-full h-full accelerate-gpu";
+                    tempWrapper.innerHTML = generateCardImageHTML(s.code, v);
+                    gpuCardVault.appendChild(tempWrapper);
+
+                    // 如果瀏覽器支援 Image.decode() API，強迫進行主線程之外的硬體解碼
+                    const img = tempWrapper.querySelector('img');
+                    if (img && typeof img.decode === 'function') {
+                        img.decode().catch(() => {});
+                    }
+                });
+            });
+        }
+
+        // --- 從保溫庫中安全提取已解碼的卡牌 DOM (避免重新生成 HTML 導致解碼延遲) ---
+        function getPreDecodedCardElement(suitCode, valueStr) {
+            const wrapper = document.getElementById(`vault-wrapper-${suitCode}-${valueStr}`);
+            if (wrapper) {
+                // cloneNode(true) 能將保溫庫中已渲染好、解碼至 GPU 的記憶體紋理無閃爍複製出來
+                return wrapper.cloneNode(true).firstElementChild;
+            }
+            // 降級容錯備用
+            const temp = document.createElement('div');
+            temp.innerHTML = generateCardImageHTML(suitCode, valueStr);
+            return temp.firstElementChild;
+        }
+
+        // --- 核心：動態推算下一張強迫牌 ---
+        function calculateNextForceCard(currentCard) {
+            const suitCycle = ['H', 'S', 'D', 'C'];
+            const currentSuitIndex = suitCycle.indexOf(currentCard.suit);
+            const nextSuit = suitCycle[(currentSuitIndex + 1) % 4];
+
+            const valueMap = {
+                'A': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7,
+                '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13
+            };
+            const revValueMap = {
+                1: 'A', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7',
+                8: '8', 9: '9', 10: '10', 11: 'J', 12: 'Q', 13: 'K'
+            };
+
+            const currentValNum = valueMap[currentCard.value];
+            let nextValNum = currentValNum + 5;
+            if (nextValNum > 13) {
+                nextValNum -= 13;
+            }
+            const nextValue = revValueMap[nextValNum];
+
+            return { suit: nextSuit, value: nextValue };
+        }
+
+        // --- 不重複洗牌陣列初始化 ---
+        function initAndShuffleDeck() {
+            state.deck = [];
+            suits.forEach(s => {
+                values.forEach(v => {
+                    if (s.code === state.forceCard.suit && v === state.forceCard.value) {
+                        return;
+                    }
+                    state.deck.push({ suit: s.code, value: v });
+                });
+            });
+
+            for (let i = state.deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [state.deck[i], state.deck[j]] = [state.deck[j], state.deck[i]];
+            }
+        }
+
+        // 抽取下一張隨機牌
+        function drawNextCard() {
+            if (state.deck.length === 0) {
+                initAndShuffleDeck();
+            }
+            return state.deck.pop();
+        }
+
+        // --- 雙槽硬體加速滑動切換 (重構為 DOM 節點克隆，達成 100% 零閃爍) ---
+        function slideToNext(nextCardData, isFinal = false) {
+            if (state.isTransitioning) return;
+            state.isTransitioning = true;
+
+            // 清空插槽 B，直接追加從 GPU 貼圖保溫庫裡克隆下來、早已解碼完成的實體 DOM，杜絕閃爍
+            slotIncoming.innerHTML = '';
+            const clonedCard = getPreDecodedCardElement(nextCardData.suit, nextCardData.value);
+            slotIncoming.appendChild(clonedCard);
+
+            const slideTime = Math.floor(state.normalSpeed * 0.85);
+            
+            const easeCurve = isFinal 
+                ? 'cubic-bezier(0.16, 1, 0.3, 1)' 
+                : 'cubic-bezier(0.25, 1, 0.5, 1)';
+
+            slotActive.style.transition = `transform ${slideTime}ms ${easeCurve}`;
+            slotIncoming.style.transition = `transform ${slideTime}ms ${easeCurve}`;
+
+            slotActive.offsetHeight; // 強制重繪
+
+            slotActive.style.transform = 'translate3d(-100%, 0, 0)';
+            slotIncoming.style.transform = 'translate3d(0, 0, 0)';
+
+            if (!isFinal) {
+                playTick();
+            }
+
+            setTimeout(() => {
+                // 動畫結束，將插槽 A 內容改為克隆好的全新 DOM 結構
+                slotActive.innerHTML = '';
+                slotActive.appendChild(clonedCard.cloneNode(true));
+                
+                slotActive.style.transition = 'none';
+                slotIncoming.style.transition = 'none';
+
+                slotActive.style.transform = 'translate3d(0, 0, 0)';
+                slotIncoming.style.transform = 'translate3d(100%, 0, 0)';
+                
+                state.currentDisplayCard = nextCardData;
+                state.isTransitioning = false;
+            }, slideTime);
+        }
+
+        // --- 遞迴輪播控制機制 (220ms 恆定周期) ---
+        function runFlashLoop() {
+            if (state.status !== 'flashing') return;
+
+            if (state.stopping) {
+                if (state.phase === 3) {
+                    slideToNext(state.forceCard, true);
+                } else {
+                    const finalRandomCard = drawNextCard();
+                    slideToNext(finalRandomCard, true);
+                }
+                
+                const slideTime = Math.floor(state.normalSpeed * 0.85);
+                setTimeout(() => {
+                    finalizeMagicStop();
+                }, slideTime + 20);
+                return;
+            }
+
+            const nextCard = drawNextCard();
+            slideToNext(nextCard, false);
+
+            state.flashTimeout = setTimeout(runFlashLoop, state.normalSpeed);
+        }
+
+        // --- 點擊與流程切換控制中心 ---
+
+        function handleGlobalInteraction() {
+            if (!appBootstrapped || !magicianModal.classList.contains('hidden')) return;
+
+            if (state.status === 'idle') {
+                if (state.phase === 0) {
+                    state.phase = 1;
+                }
+                startFlashing();
+            } else if (state.status === 'flashing') {
+                triggerInstantStop();
+            } else if (state.status === 'finished') {
+                proceedToNextPhase();
+            }
+        }
+
+        function startFlashing() {
+            state.status = 'flashing';
+            state.stopping = false;
+            state.isTransitioning = false;
+
+            initAndShuffleDeck();
+            
+            defaultCardUi.classList.add('hidden');
+            cardOuter.classList.add('scale-105');
+            cardGlow.className = "absolute w-72 h-[380px] bg-red-500/20 rounded-2xl blur-3xl opacity-100 transition-all duration-300";
+
+            // 首張卡片渲染也改用 getPreDecodedCardElement 提高加載首幀速度
+            const startCard = drawNextCard();
+            slotActive.innerHTML = '';
+            slotActive.appendChild(getPreDecodedCardElement(startCard.suit, startCard.value));
+            state.currentDisplayCard = startCard;
+
+            state.flashTimeout = setTimeout(runFlashLoop, state.normalSpeed);
+        }
+
+        function triggerInstantStop() {
+            if (state.status !== 'flashing' || state.stopping) return;
+            state.stopping = true;
+        }
+
+        function finalizeMagicStop() {
+            state.status = 'finished';
+            clearTimeout(state.flashTimeout);
+            playHeavyTick();
+
+            cardOuter.classList.remove('scale-105');
+            
+            impactWave.classList.remove('animate-impact');
+            void impactWave.offsetWidth; 
+            impactWave.classList.add('animate-impact');
+
+            if (state.phase === 3) {
+                cardGlow.className = "absolute w-72 h-[380px] bg-amber-500/35 rounded-2xl blur-3xl opacity-100 transition-all duration-300";
+                cardOuter.classList.add('border-amber-500/35');
+            } else {
+                cardGlow.className = "absolute w-72 h-[380px] bg-red-600/15 rounded-2xl blur-3xl opacity-100 transition-all duration-300";
+            }
+        }
+
+        function proceedToNextPhase() {
+            if (state.phase === 1) {
+                state.phase = 2;
+                state.status = 'idle';
+                startFlashing();
+            } else if (state.phase === 2) {
+                state.phase = 3;
+                state.status = 'idle';
+                startFlashing();
+            } else if (state.phase === 3) {
+                // 連鎖預言
+                state.forceCard = calculateNextForceCard(state.forceCard);
+                state.status = 'idle';
+                
+                cardOuter.className = "relative w-64 h-[358px] bg-neutral-950/90 border border-white/10 rounded-2xl card-pulse flex items-center justify-center transition-all duration-300 overflow-hidden accelerate-gpu";
+                startFlashing();
+            }
+        }
+
+        function resetApp() {
+            state.phase = 0;
+            state.status = 'idle';
+            state.stopping = false;
+            state.isTransitioning = false;
+            clearTimeout(state.flashTimeout);
+            
+            state.forceCard.suit = forceSuitSelect.value;
+            state.forceCard.value = forceValueSelect.value;
+
+            slotActive.style.transition = 'none';
+            slotIncoming.style.transition = 'none';
+            slotActive.style.transform = 'translate3d(0, 0, 0)';
+            slotIncoming.style.transform = 'translate3d(100%, 0, 0)';
+
+            slotActive.innerHTML = '';
+            slotActive.appendChild(defaultCardUi);
+            slotIncoming.innerHTML = '';
+            defaultCardUi.classList.remove('hidden');
+
+            cardOuter.className = "relative w-64 h-[358px] bg-neutral-950/90 border border-white/10 rounded-2xl card-pulse flex items-center justify-center transition-all duration-300 overflow-hidden accelerate-gpu";
+            impactWave.classList.remove('animate-impact');
+            
+            cardGlow.className = "absolute w-72 h-[380px] bg-red-600/5 rounded-2xl blur-3xl transition-all duration-1000 opacity-50";
+        }
+
+
+        // --- 互動事件監聽 ---
+
+        interactiveScreen.addEventListener('click', () => {
+            handleGlobalInteraction();
+        });
+
+
+        // --- 魔術師秘密設定面板操作 (長按極右下角熱區) ---
+
+        let pressTimer = null;
+        const PRESS_DURATION = 1000; // 1秒長按
+
+        function startPress() {
+            if (!appBootstrapped) return;
+            if (pressTimer) clearTimeout(pressTimer);
+            pressTimer = setTimeout(() => {
+                playHeavyTick();
+                if (state.phase === 0 && state.status === 'idle') {
+                    openMagicianModal();
+                } else {
+                    resetApp();
+                }
+                pressTimer = null;
+            }, PRESS_DURATION);
+        }
+
+        function cancelPress() {
+            if (pressTimer) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+            }
+        }
+
+        // 行動端長按觸控事件
+        magicHotspot.addEventListener('touchstart', (e) => {
+            e.stopPropagation(); // 阻止冒泡到全螢幕點擊（防止啟動卡片）
+            startPress();
+        }, { passive: true });
+
+        magicHotspot.addEventListener('touchend', (e) => {
+            e.stopPropagation();
+            cancelPress();
+        });
+
+        magicHotspot.addEventListener('touchmove', () => {
+            cancelPress();
+        }, { passive: true });
+
+        // 桌面端滑鼠長按事件
+        magicHotspot.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            if (e.button === 0) { // 僅限滑鼠左鍵
+                startPress();
+            }
+        });
+
+        magicHotspot.addEventListener('mouseup', (e) => {
+            e.stopPropagation();
+            cancelPress();
+        });
+
+        magicHotspot.addEventListener('mouseleave', () => {
+            cancelPress();
+        });
+
+        function openMagicianModal() {
+            magicianModal.classList.remove('hidden');
+            setTimeout(() => {
+                magicianModal.classList.add('opacity-100');
+            }, 10);
+        }
+
+        settingsSaveBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            state.forceCard.suit = forceSuitSelect.value;
+            state.forceCard.value = forceValueSelect.value;
+            
+            // 核心修正：當魔術師在後台修改了首張強迫牌，需要重新更新「GPU保溫庫」，確保新強迫牌能完美載入快取
+            initGPUVault();
+
+            magicianModal.classList.remove('opacity-100');
+            setTimeout(() => {
+                magicianModal.classList.add('hidden');
+            }, 300);
+            
+            playTick();
+        });
+    </script>
+</body>
+</html>

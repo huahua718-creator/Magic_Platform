@@ -22,6 +22,7 @@ def test_platform():
     admin_access_draw = SubscriptionManager.can_access_trick(ADMIN_USER_ID, "drawcards")
     admin_access_drawacard = SubscriptionManager.can_access_trick(ADMIN_USER_ID, "drawacard")
     admin_access_pickonecards = SubscriptionManager.can_access_trick(ADMIN_USER_ID, "pickonecards")
+    admin_access_pinkingcard = SubscriptionManager.can_access_trick(ADMIN_USER_ID, "pinkingcard")
     assert all([
         admin_access_xray["allowed"],
         admin_access_keycard["allowed"],
@@ -29,8 +30,9 @@ def test_platform():
         admin_access_draw["allowed"],
         admin_access_drawacard["allowed"],
         admin_access_pickonecards["allowed"],
+        admin_access_pinkingcard["allowed"],
     ]), "超級管理員應擁有所有魔術權限"
-    print(f"3. 超級管理員權限 -> XRay: {admin_access_xray['allowed']} | Keycard AR: {admin_access_keycard['allowed']} | Frozen Proof: {admin_access_frozen['allowed']} | Drawcards: {admin_access_draw['allowed']} | Drawacard: {admin_access_drawacard['allowed']} | Pickonecards: {admin_access_pickonecards['allowed']}")
+    print(f"3. 超級管理員權限 -> XRay: {admin_access_xray['allowed']} | Keycard AR: {admin_access_keycard['allowed']} | Frozen Proof: {admin_access_frozen['allowed']} | Drawcards: {admin_access_draw['allowed']} | Drawacard: {admin_access_drawacard['allowed']} | Pickonecards: {admin_access_pickonecards['allowed']} | Pinkingcard: {admin_access_pinkingcard['allowed']}")
 
     # 測試一般未訂閱用戶權限
     test_guest = "U_GUEST_TEST_999"
@@ -40,8 +42,9 @@ def test_platform():
     guest_draw = SubscriptionManager.can_access_trick(test_guest, "drawcards")
     guest_drawacard = SubscriptionManager.can_access_trick(test_guest, "drawacard")
     guest_pickonecards = SubscriptionManager.can_access_trick(test_guest, "pickonecards")
-    assert not guest_drawacard["allowed"] and not guest_pickonecards["allowed"], "未訂閱用戶不應存取付費道具"
-    print(f"4. 未訂閱遊客權限 -> XRay (試玩): {guest_xray['allowed']} (剩 {guest_xray.get('remaining')} 次) | Keycard AR: {guest_keycard['allowed']} | Frozen: {guest_frozen['allowed']} | Drawcards: {guest_draw['allowed']} | Drawacard: {guest_drawacard['allowed']} | Pickonecards: {guest_pickonecards['allowed']}")
+    guest_pinkingcard = SubscriptionManager.can_access_trick(test_guest, "pinkingcard")
+    assert not guest_drawacard["allowed"] and not guest_pickonecards["allowed"] and not guest_pinkingcard["allowed"], "未訂閱用戶不應存取付費道具"
+    print(f"4. 未訂閱遊客權限 -> XRay (試玩): {guest_xray['allowed']} (剩 {guest_xray.get('remaining')} 次) | Keycard AR: {guest_keycard['allowed']} | Frozen: {guest_frozen['allowed']} | Drawcards: {guest_draw['allowed']} | Drawacard: {guest_drawacard['allowed']} | Pickonecards: {guest_pickonecards['allowed']} | Pinkingcard: {guest_pinkingcard['allowed']}")
 
     # 測試管理員授與訂閱資格 30 天
     print("5. 模擬超級管理員執行 !grant 授與測試會員 30 天訂閱...")
@@ -49,13 +52,14 @@ def test_platform():
     sub_draw = SubscriptionManager.can_access_trick(test_guest, "drawcards")
     sub_drawacard = SubscriptionManager.can_access_trick(test_guest, "drawacard")
     sub_pickonecards = SubscriptionManager.can_access_trick(test_guest, "pickonecards")
-    assert sub_draw["allowed"] and sub_drawacard["allowed"] and sub_pickonecards["allowed"], "訂閱後應解鎖所有 Pro 魔術"
-    print(f"   訂閱開通結果 -> 到期日: {sub_record['expire_at']} | Drawcards 解鎖: {sub_draw['allowed']} | Drawacard 解鎖: {sub_drawacard['allowed']} | Pickonecards 解鎖: {sub_pickonecards['allowed']}")
+    sub_pinkingcard = SubscriptionManager.can_access_trick(test_guest, "pinkingcard")
+    assert sub_draw["allowed"] and sub_drawacard["allowed"] and sub_pickonecards["allowed"] and sub_pinkingcard["allowed"], "訂閱後應解鎖所有 Pro 魔術"
+    print(f"   訂閱開通結果 -> 到期日: {sub_record['expire_at']} | Drawcards: {sub_draw['allowed']} | Drawacard: {sub_drawacard['allowed']} | Pickonecards: {sub_pickonecards['allowed']} | Pinkingcard: {sub_pinkingcard['allowed']}")
 
     # 測試 Token 生成與驗證
-    token = SubscriptionManager.generate_launch_token(test_guest, "pickonecards")
-    valid = SubscriptionManager.verify_launch_token(test_guest, "pickonecards", token)
-    tampered = SubscriptionManager.verify_launch_token(test_guest, "pickonecards", "fake_token_123")
+    token = SubscriptionManager.generate_launch_token(test_guest, "pinkingcard")
+    valid = SubscriptionManager.verify_launch_token(test_guest, "pinkingcard", token)
+    tampered = SubscriptionManager.verify_launch_token(test_guest, "pinkingcard", "fake_token_123")
     assert valid and not tampered, "Token 驗證邏輯異常"
     print(f"6. 防偽 Token 驗證 -> 正確 Token: {valid} | 偽造 Token: {tampered}")
 
@@ -66,9 +70,9 @@ def test_platform():
 
     # 測試完畢撤銷測試用戶以保持資料庫乾淨
     SubscriptionManager.revoke_subscription(test_guest)
-    revoked_pickonecards = SubscriptionManager.can_access_trick(test_guest, "pickonecards")
-    assert not revoked_pickonecards["allowed"], "撤銷訂閱後應收回 pickonecards 授權"
-    print(f"8. 停用測試訂閱驗證 -> Pickonecards 授權已回收: {not revoked_pickonecards['allowed']}")
+    revoked_pinkingcard = SubscriptionManager.can_access_trick(test_guest, "pinkingcard")
+    assert not revoked_pinkingcard["allowed"], "撤銷訂閱後應收回 pinkingcard 授權"
+    print(f"8. 停用測試訂閱驗證 -> Pinkingcard 授權已回收: {not revoked_pinkingcard['allowed']}")
 
     # 驗證靜態路徑掛載點
     print("9. 檢查所有魔術前端檔案路徑:")
@@ -79,6 +83,7 @@ def test_platform():
         ("Drawcards", os.path.join(platform_app.DRAWCARDS_DIR, 'index.html')),
         ("Drawacard", os.path.join(platform_app.DRAWACARD_DIR, 'index.html')),
         ("Pickonecards", os.path.join(platform_app.PICKONECARDS_DIR, 'index.html')),
+        ("Pinkingcard", os.path.join(platform_app.PINKINGCARD_DIR, 'index.html')),
     ]
     for label, p in paths:
         exists = os.path.exists(p)
