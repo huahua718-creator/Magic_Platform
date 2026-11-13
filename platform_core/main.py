@@ -147,13 +147,13 @@ async def liff_router(trick: str = "xray_card", mid: str = "", uid: str = "", to
     讓單一 LIFF App 可以根據網址參數，無縫進入不同魔術道具介面
     """
     if trick == "keycard_ar":
-        target = f"/tricks/keycard/index.html?mid={mid}&token={token}"
+        target = f"/tricks/keycard/index.html?mid={mid}&token={token}&openExternalBrowser=1"
     elif trick == "frozen_proof_ar":
-        target = f"/tricks/frozen/index.html?mode=master&mid={mid}&token={token}"
+        target = f"/tricks/frozen/index.html?mode=master&mid={mid}&token={token}&openExternalBrowser=1"
     elif trick == "drawcards":
-        target = f"/tricks/drawcards/index.html?mid={mid}&token={token}"
+        target = f"/tricks/drawcards/index.html?mid={mid}&token={token}&openExternalBrowser=1"
     elif trick == "drawacard":
-        target = f"/tricks/drawacard/index.html?mid={mid}&token={token}"
+        target = f"/tricks/drawacard/index.html?mid={mid}&token={token}&openExternalBrowser=1"
     elif trick == "pickonecards":
         target = f"/tricks/pickonecards/index.html?mid={mid}&token={token}"
     elif trick == "pinkingcard":
@@ -458,7 +458,7 @@ def handle_text_message(event):
             return
 
         elif trick_id == "drawcards":
-            launch_url = f"{BASE_URL}/tricks/drawcards/index.html?mid={user_id}&token={token}"
+            launch_url = f"{BASE_URL}/tricks/drawcards/index.html?mid={user_id}&token={token}&openExternalBrowser=1"
             flex_drawcards = {
                 "type": "bubble",
                 "body": {
@@ -466,7 +466,7 @@ def handle_text_message(event):
                     "layout": "vertical",
                     "contents": [
                         {"type": "text", "text": "✏️ 多人畫牌已授權！", "weight": "bold", "size": "lg", "color": "#f59e0b"},
-                        {"type": "text", "text": "長按右下角隱形感應區可秘密設定首張牌，否則自動以今日日期演算法啟動。讓多位觀眾畫框後長按即可變身 3D 單車撲克！", "size": "xs", "color": "#666666", "margin": "md", "wrap": True}
+                        {"type": "text", "text": "長按右下角隱形感應區可秘密設定首張牌，否則自動以今日日期演算法啟動。讓多位觀眾畫框後長按即可變身 3D 單車撲克！（已啟用外部瀏覽器模式，暢快手繪不誤觸退出）", "size": "xs", "color": "#666666", "margin": "md", "wrap": True}
                     ]
                 },
                 "footer": {
@@ -477,7 +477,7 @@ def handle_text_message(event):
                             "type": "button",
                             "style": "primary",
                             "color": "#f59e0b",
-                            "action": {"type": "uri", "label": "✏️ 啟動多人畫牌道具", "uri": launch_url}
+                            "action": {"type": "uri", "label": "✏️ 啟動多人畫牌 (外部瀏覽器)", "uri": launch_url}
                         }
                     ]
                 }
@@ -486,13 +486,13 @@ def handle_text_message(event):
                 event.reply_token,
                 [
                     create_flex_msg("多人畫牌已授權", flex_drawcards),
-                    create_text_msg(f"🔗 多人畫牌直連網址：\n{launch_url}", quick_reply=quick_reply)
+                    create_text_msg(f"🔗 多人畫牌直連網址（外部瀏覽器開啟）：\n{launch_url}", quick_reply=quick_reply)
                 ]
             )
             return
 
         elif trick_id == "drawacard":
-            launch_url = f"{BASE_URL}/tricks/drawacard/index.html?mid={user_id}&token={token}"
+            launch_url = f"{BASE_URL}/tricks/drawacard/index.html?mid={user_id}&token={token}&openExternalBrowser=1"
             flex_drawacard = {
                 "type": "bubble",
                 "body": {
@@ -500,7 +500,7 @@ def handle_text_message(event):
                     "layout": "vertical",
                     "contents": [
                         {"type": "text", "text": "🧙‍♂️ 畫魔術師已授權！", "weight": "bold", "size": "lg", "color": "#10b981"},
-                        {"type": "text", "text": "雙擊右下角隱藏區可秘密設定撲克牌，未設定則依今日日期運算。先畫出魔術師並按 Next，再請觀眾畫框點擊即可施展 3D 翻牌預言！", "size": "xs", "color": "#666666", "margin": "md", "wrap": True}
+                        {"type": "text", "text": "雙擊右下角隱藏區可秘密設定撲克牌，未設定則依今日日期運算。先畫出魔術師並按 Next，再請觀眾畫框點擊即可施展 3D 翻牌預言！（已啟用外部瀏覽器模式，暢快手繪不誤觸退出）", "size": "xs", "color": "#666666", "margin": "md", "wrap": True}
                     ]
                 },
                 "footer": {
@@ -511,7 +511,7 @@ def handle_text_message(event):
                             "type": "button",
                             "style": "primary",
                             "color": "#10b981",
-                            "action": {"type": "uri", "label": "🧙‍♂️ 啟動畫魔術師道具", "uri": launch_url}
+                            "action": {"type": "uri", "label": "🧙‍♂️ 啟動畫魔術師 (外部瀏覽器)", "uri": launch_url}
                         }
                     ]
                 }
@@ -520,7 +520,7 @@ def handle_text_message(event):
                 event.reply_token,
                 [
                     create_flex_msg("畫魔術師已授權", flex_drawacard),
-                    create_text_msg(f"🔗 畫魔術師直連網址：\n{launch_url}", quick_reply=quick_reply)
+                    create_text_msg(f"🔗 畫魔術師直連網址（外部瀏覽器開啟）：\n{launch_url}", quick_reply=quick_reply)
                 ]
             )
             return

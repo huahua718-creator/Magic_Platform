@@ -7,11 +7,11 @@
     <style>
         /* 💡 全域防干擾與極簡黑美學 */
         * { box-sizing: border-box; }
-        body { 
+        html, body { 
             margin: 0; background-color: #111; 
             display: flex; flex-direction: column; align-items: center; 
             min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #fff; 
-            touch-action: none; overflow: hidden;
+            touch-action: none; overflow: hidden; overscroll-behavior: none;
             user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
         }
 
@@ -118,6 +118,13 @@
         let isAuthorized = true;
         window.addEventListener('DOMContentLoaded', async () => {
             const params = new URLSearchParams(window.location.search);
+            // 🛡️ 自動外部瀏覽器跳轉：若在 LINE 內建 Webview 開啟且無 openExternalBrowser 參數，喚醒系統外部瀏覽器
+            if (/Line\//i.test(navigator.userAgent) && !params.get('openExternalBrowser')) {
+                const redirectUrl = new URL(window.location.href);
+                redirectUrl.searchParams.set('openExternalBrowser', '1');
+                window.location.replace(redirectUrl.href);
+                return;
+            }
             const mid = params.get('mid') || '';
             const token = params.get('token') || '';
             try {
@@ -320,6 +327,7 @@
 
         let pressTimer;
         canvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
             isDrawing = true; strokes = []; 
             const pos = getRelativePos(e);
             ctx.beginPath(); ctx.moveTo(pos.x, pos.y);
@@ -327,6 +335,7 @@
         });
 
         canvas.addEventListener('pointermove', (e) => {
+            e.preventDefault();
             if(!isDrawing) return;
             const pos = getRelativePos(e);
             ctx.lineTo(pos.x, pos.y); ctx.stroke();
@@ -334,7 +343,8 @@
             clearTimeout(pressTimer);
         });
 
-        canvas.addEventListener('pointerup', () => {
+        canvas.addEventListener('pointerup', (e) => {
+            e.preventDefault();
             isDrawing = false; clearTimeout(pressTimer);
             if(strokes.length > 15) drawnRects.push([...strokes]);
         });

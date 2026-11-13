@@ -6,7 +6,7 @@
     <title>Cardtoon - Magic Card</title>
     <style>
         /* 🔒 Base Protection */
-        html, body { touch-action: none; -webkit-text-size-adjust: none; }
+        html, body { touch-action: none; -webkit-text-size-adjust: none; overscroll-behavior: none; }
         
         body { 
             margin: 0; background-image: url('./image_6.png'); background-size: 80%;
@@ -136,6 +136,13 @@
         let isAuthorized = true;
         window.addEventListener('DOMContentLoaded', async () => {
             const params = new URLSearchParams(window.location.search);
+            // 🛡️ 自動外部瀏覽器跳轉：若在 LINE 內建 Webview 開啟且無 openExternalBrowser 參數，喚醒系統外部瀏覽器
+            if (/Line\//i.test(navigator.userAgent) && !params.get('openExternalBrowser')) {
+                const redirectUrl = new URL(window.location.href);
+                redirectUrl.searchParams.set('openExternalBrowser', '1');
+                window.location.replace(redirectUrl.href);
+                return;
+            }
             const mid = params.get('mid') || '';
             const token = params.get('token') || '';
             try {
@@ -268,6 +275,7 @@
 
         // 🛠 修正 pointerdown 座標計算
         canvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
             if(magicState > 0 && magicState < 4) return;
             isDrawing = true;
             const rect = canvas.getBoundingClientRect();
@@ -288,6 +296,7 @@
 
         // 🛠 修正 pointermove 座標計算
         canvas.addEventListener('pointermove', (e) => {
+            e.preventDefault();
             if (!isDrawing || (magicState > 0 && magicState < 4)) return;
             const rect = canvas.getBoundingClientRect();
             // 計算縮放比例
